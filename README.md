@@ -1,0 +1,154 @@
+# Bellhound
+
+Bellhound is a small, line-oriented telephone bridge for interactive agents. The agent that decides to call remains the reasoning agent; Bellhound supplies ears, a mouth, and telephone transport.
+
+```text
+agent <-> JSON Lines over stdin/stdout <-> Bellhound <-> Telnyx Conversation Relay <-> telephone
+```
+
+Bellhound contains no language model and makes no decisions. It translates final speech-to-text frames into deterministic terminal events and translates agent `speak` commands into Telnyx text-to-speech frames.
+
+See [Architecture](docs/architecture.md) for the ownership and trust model and [Live setup](docs/live-setup.md) for the Telnyx/tunnel sequence.
+
+## Status
+
+Version `0.1.0` provides:
+
+- a strict JSON Lines agent protocol;
+- a deterministic local call simulator;
+- a loopback-only Conversation Relay WebSocket server;
+- one active call at a time;
+- URL-token authentication, call-duration limits, text-size limits, sequence numbers, and explicit errors;
+- outbound Dial with embedded Conversation Relay configuration;
+- Telnyx Call Control hangup for the telephone leg;
+- environment or operating-system credential-store API-key resolution.
+
+Live use requires a dedicated Telnyx Call Control application and a durable WSS tunnel or host.
+
+## Build
+
+```sh
+cargo build --release
+```
+
+Bellhound is ordinary Rust and targets macOS, Linux, and Windows. The WebSocket server binds only to loopback; use a TLS tunnel or reverse proxy to expose it as `wss://`.
+
+## Configuration
+
+Create a starter file:
+
+```sh
+bellhound --config bellhound.toml init
+bellhound --config bellhound.toml check
+```
+
+The configuration is intentionally small:
+
+```toml
+[credentials]
+api_key_env = "TELNYX_API_KEY"
+keyring_service = "Telnyx API key"
+keyring_account = "your-account"
+
+[relay]
+bind = "127.0.0.1:8787"
+path = "/conversation-relay"
+webhook_path = "/webhooks/telnyx"
+token_env = "BELLHOUND_RELAY_TOKEN"
+max_call_seconds = 300
+emit_partial_transcripts = false
+
+[protocol]
+max_speak_chars = 2000
+```
+
+The relay token never belongs in the TOML file. Supply an unguessable value of at least 24 characters through the configured environment variable.
+
+Bellhound checks `TELNYX_API_KEY` first, then the configured macOS Keychain, Windows Credential Manager, or Linux Secret Service entry. `bellhound credentials` verifies availability without printing the secret.
+
+Add the live call settings only on the machine placing calls:
+
+```toml
+[telnyx]
+connection_id = "your-call-control-application-id"
+from_number = "+14245550100"
+to_number = "+18185550100"
+public_wss_base = "wss://your-host.example/conversation-relay"
+voice = "Telnyx.NaturalHD.astra"
+language = "en-US"
+transcription_engine = "Deepgram"
+transcription_model = "deepgram/nova-3"
+```
+
+Numbers must use `+E.164` format. Keep personal numbers in an ignored local configuration, not in source control.
+
+## Agent protocol
+
+Stdout contains exactly one JSON event per line. Diagnostics go to stderr.
+
+Final caller speech:
+
+```json
+{"event":"utterance","session_id":"...","sequence":1,"text":"I need your help.","language":"en","final_utterance":true}
+```
+
+The agent sends commands on stdin:
+
+```json
+{"command":"speak","text":"Tell me what happened."}
+{"command":"hangup","reason":"conversation_complete"}
+```
+
+Other events include `ready`, `connected`, `interrupted`, `dtmf`, `spoken`, `pong`, `ended`, `transport`, and `error`.
+
+## Local simulation
+
+Copy the example configuration and start the scripted call:
+
+```sh
+cp bellhound.example.toml bellhound.toml
+cargo run -- --config bellhound.toml simulate --script examples/crocodile-call.jsonl
+```
+
+Bellhound emits the first caller utterance. Send a `speak` command on stdin to advance to the next utterance. This mirrors the control flow an agent uses with a long-lived PTY.
+
+## Conversation Relay server
+
+Set a secret token and start the listener:
+
+```sh
+export BELLHOUND_RELAY_TOKEN="replace-with-at-least-24-random-characters"
+cargo run -- --config bellhound.toml relay
+```
+
+Configure Telnyx Conversation Relay to connect through your WSS tunnel at:
+
+```text
+wss://your-host.example/conversation-relay/<the-token>
+```
+
+Telnyx final `prompt` frames become `utterance` events. Bellhound converts `speak` commands to:
+
+```json
+{"type":"text","token":"agent response","last":true}
+```
+
+With the relay and WSS tunnel already running, place a call with:
+
+```sh
+bellhound --config bellhound.toml dial \
+  --opening "Justin, I found something and need your judgment."
+```
+
+Bellhound embeds the Conversation Relay settings directly in the Dial request. The call has the same hard duration limit as the relay configuration.
+An agent `hangup` command ends both the relay session and the underlying Call Control telephone leg.
+
+## Trust boundary
+
+Speech arriving through Bellhound is terminal tool output. It can supply facts, preferences, and ordinary guidance. It should not independently satisfy approval requirements for destructive, privileged, or otherwise consequential actions. Keep the normal user-approval path for those actions.
+
+Bellhound also cannot prove who answered a verified telephone. Add a DTMF or spoken challenge before treating a call as Justin-authenticated.
+
+## Name
+
+A bell hound is a small, loyal telephone runner: it fetches the human and brings the answer back to the agent.

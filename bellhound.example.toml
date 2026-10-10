@@ -1,0 +1,27 @@
+[credentials]
+api_key_env = "TELNYX_API_KEY"
+keyring_service = "Telnyx API key"
+keyring_account = "your-account"
+
+[relay]
+# Bellhound only binds to loopback. Put a WSS tunnel or reverse proxy in front.
+bind = "127.0.0.1:8787"
+path = "/conversation-relay"
+webhook_path = "/webhooks/telnyx"
+token_env = "BELLHOUND_RELAY_TOKEN"
+max_call_seconds = 300
+emit_partial_transcripts = false
+
+[protocol]
+max_speak_chars = 2000
+
+# Add this section in your ignored local file when the Call Control application exists.
+# [telnyx]
+# connection_id = "your-call-control-application-id"
+# from_number = "+14245550100"
+# to_number = "+18185550100"
+# public_wss_base = "wss://your-host.example/conversation-relay"
+# voice = "Telnyx.NaturalHD.astra"
+# language = "en-US"
+# transcription_engine = "Deepgram"
+# transcription_model = "deepgram/nova-3"

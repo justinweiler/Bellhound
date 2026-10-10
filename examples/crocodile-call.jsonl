@@ -1,0 +1,4 @@
+# These are the same final prompt frames Telnyx Conversation Relay sends.
+{"type":"prompt","voicePrompt":"I defeated the crocodile, but I lost a boot.","lang":"en","last":true}
+{"type":"prompt","voicePrompt":"Yes, deploy the config to development after the tests pass.","lang":"en","last":true}
+{"type":"prompt","voicePrompt":"That is all. Call me if anything else gets weird.","lang":"en","last":true}
