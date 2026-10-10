@@ -89,7 +89,7 @@ Stdout contains exactly one JSON event per line. Diagnostics go to stderr.
 Final caller speech:
 
 ```json
-{"event":"utterance","session_id":"...","sequence":1,"text":"I need your help.","language":"en","final_utterance":true}
+{"emitted_at_unix_ms":1791512345678,"event":"utterance","session_id":"...","sequence":1,"text":"I need your help.","language":"en","final_utterance":true}
 ```
 
 The agent sends commands on stdin:
@@ -100,6 +100,7 @@ The agent sends commands on stdin:
 ```
 
 Other events include `ready`, `connected`, `interrupted`, `dtmf`, `spoken`, `pong`, `ended`, `transport`, and `error`.
+Every event carries `emitted_at_unix_ms` so a caller can distinguish relay timing from agent and TTS delays.
 
 ## Local simulation
 

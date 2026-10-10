@@ -1,6 +1,10 @@
-use std::io;
+use std::{
+    io,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use anyhow::Result;
+use serde::Serialize;
 use tokio::{
     io::{AsyncWriteExt, BufWriter},
     sync::mpsc,
@@ -11,6 +15,13 @@ use crate::protocol::AgentEvent;
 #[derive(Clone)]
 pub struct EventSink {
     pub(crate) sender: mpsc::UnboundedSender<AgentEvent>,
+}
+
+#[derive(Serialize)]
+struct TimedEvent<'a> {
+    emitted_at_unix_ms: u128,
+    #[serde(flatten)]
+    event: &'a AgentEvent,
 }
 
 impl EventSink {
@@ -25,7 +36,14 @@ pub fn channel() -> (EventSink, impl std::future::Future<Output = Result<()>>) {
     let writer = async move {
         let mut stdout = BufWriter::new(tokio::io::stdout());
         while let Some(event) = receiver.recv().await {
-            let mut line = serde_json::to_vec(&event)?;
+            let timed = TimedEvent {
+                emitted_at_unix_ms: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis(),
+                event: &event,
+            };
+            let mut line = serde_json::to_vec(&timed)?;
             line.push(b'\n');
             stdout.write_all(&line).await?;
             stdout.flush().await?;
@@ -74,4 +92,21 @@ pub async fn read_commands(
         }
     }
     Err(io::Error::new(io::ErrorKind::UnexpectedEof, "stdin closed").into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn timed_event_flattens_protocol_event() {
+        let event = AgentEvent::Pong;
+        let value = serde_json::to_value(TimedEvent {
+            emitted_at_unix_ms: 1_234,
+            event: &event,
+        })
+        .unwrap();
+        assert_eq!(value["emitted_at_unix_ms"], 1_234);
+        assert_eq!(value["event"], "pong");
+    }
 }

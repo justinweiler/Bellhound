@@ -32,6 +32,7 @@ ready -> dialing -> connected -> utterance/speak loop -> ended
 ```
 
 Bellhound permits one active WebSocket call. Every final utterance receives a monotonically increasing sequence number. Calls stop at the configured maximum duration even when the model or caller forgets to hang up.
+Every event includes an emission timestamp in Unix milliseconds for latency tracing across STT arrival, agent response, and TTS dispatch.
 
 ## Trust
 
