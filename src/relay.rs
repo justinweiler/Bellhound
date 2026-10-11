@@ -5,23 +5,24 @@ use std::{
 
 use anyhow::{Context, Result};
 use axum::{
-    Router,
+    Json, Router,
     body::Bytes,
     extract::{
-        Path, State,
+        Path, Query, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
 use futures_util::{SinkExt, StreamExt};
+use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, broadcast};
 use uuid::Uuid;
 
 use crate::{
     config::Config,
-    output::{self, EventSink},
+    output::{self, EventSink, NextEvent},
     protocol::{AgentCommand, AgentEvent, TelnyxFrame, telnyx_end_frame, telnyx_text_frame},
     telnyx,
 };
@@ -73,19 +74,97 @@ pub async fn run(config: Config) -> Result<()> {
     let app = Router::new()
         .route(&config.route(), get(upgrade))
         .route(&config.webhook_route(), post(webhook))
+        .with_state(state.clone());
+    let control_app = Router::new()
+        .route("/v1/events/next", get(next_event))
+        .route("/v1/commands", post(control_command))
         .with_state(state);
     let listener = tokio::net::TcpListener::bind(config.relay.bind).await?;
+    let control_listener = tokio::net::TcpListener::bind(config.relay.control_bind).await?;
     tracing::info!(address = %config.relay.bind, "Bellhound relay listening");
+    tracing::info!(address = %config.relay.control_bind, "Bellhound control listener ready");
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
-        })
-        .await?;
+    let mut relay_task = tokio::spawn(async move { axum::serve(listener, app).await });
+    let mut control_task =
+        tokio::spawn(async move { axum::serve(control_listener, control_app).await });
+    tokio::select! {
+        result = &mut relay_task => result??,
+        result = &mut control_task => result??,
+        _ = tokio::signal::ctrl_c() => {}
+    }
+    relay_task.abort();
+    control_task.abort();
 
     command_task.abort();
     writer_task.abort();
     Ok(())
+}
+
+#[derive(Deserialize)]
+struct WaitQuery {
+    #[serde(default)]
+    after: u64,
+    #[serde(default = "default_wait_seconds")]
+    timeout_seconds: u64,
+}
+
+fn default_wait_seconds() -> u64 {
+    120
+}
+
+fn control_authorized(headers: &HeaderMap, state: &AppState) -> bool {
+    headers
+        .get("x-bellhound-token")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.as_bytes() == state.token.as_bytes())
+}
+
+#[derive(Serialize)]
+struct HistoryGapResponse {
+    error: &'static str,
+    after: u64,
+    oldest_event_id: u64,
+}
+
+async fn next_event(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<WaitQuery>,
+) -> Response {
+    if !control_authorized(&headers, &state) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let wait = Duration::from_secs(query.timeout_seconds.clamp(1, 300));
+    match state.sink.next_after(query.after, wait).await {
+        Some(NextEvent::Event(event)) => Json(event.as_ref().clone()).into_response(),
+        Some(NextEvent::HistoryGap { oldest_event_id }) => (
+            StatusCode::CONFLICT,
+            Json(HistoryGapResponse {
+                error: "event_history_gap",
+                after: query.after,
+                oldest_event_id,
+            }),
+        )
+            .into_response(),
+        None => StatusCode::NO_CONTENT.into_response(),
+    }
+}
+
+async fn control_command(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(command): Json<AgentCommand>,
+) -> StatusCode {
+    if !control_authorized(&headers, &state) {
+        return StatusCode::UNAUTHORIZED;
+    }
+    output::dispatch_command(
+        command,
+        state.config.protocol.max_speak_chars,
+        &state.sink,
+        &state.commands,
+    );
+    StatusCode::ACCEPTED
 }
 
 async fn webhook(
@@ -354,13 +433,12 @@ mod tests {
 
     #[tokio::test]
     async fn final_prompt_becomes_utterance() {
-        let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
-        let sink = crate::output::EventSink { sender };
+        let (sink, _writer) = crate::output::channel();
         let (commands, _) = broadcast::channel(4);
         let state = AppState {
             token: "abcdefghijklmnopqrstuvwxyz".into(),
             config: Config::default(),
-            sink,
+            sink: sink.clone(),
             commands,
             active_session: Arc::new(Mutex::new(None)),
             active_call_control_id: Arc::new(StdMutex::new(None)),
@@ -372,9 +450,12 @@ mod tests {
             &mut sequence,
             r#"{"type":"prompt","voicePrompt":"hello","lang":"en","last":true}"#,
         );
-        let event = receiver.recv().await.unwrap();
+        let Some(NextEvent::Event(event)) = sink.next_after(0, Duration::from_millis(10)).await
+        else {
+            panic!("expected utterance event");
+        };
         assert_eq!(
-            event,
+            event.event,
             AgentEvent::Utterance {
                 session_id: "session-1".to_owned(),
                 sequence: 1,
@@ -387,13 +468,12 @@ mod tests {
 
     #[tokio::test]
     async fn setup_event_omits_phone_numbers() {
-        let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
-        let sink = crate::output::EventSink { sender };
+        let (sink, _writer) = crate::output::channel();
         let (commands, _) = broadcast::channel(4);
         let state = AppState {
             token: "abcdefghijklmnopqrstuvwxyz".into(),
             config: Config::default(),
-            sink,
+            sink: sink.clone(),
             commands,
             active_session: Arc::new(Mutex::new(None)),
             active_call_control_id: Arc::new(StdMutex::new(None)),
@@ -405,10 +485,13 @@ mod tests {
             &mut sequence,
             r#"{"type":"setup","sessionId":"relay-session","callControlId":"call-control","callSessionId":"call-session","from":"+14245550100","to":"+18185550100","direction":"outbound","callStatus":"active"}"#,
         );
-        let event = receiver.recv().await.unwrap();
-        let serialized = serde_json::to_string(&event).unwrap();
+        let Some(NextEvent::Event(event)) = sink.next_after(0, Duration::from_millis(10)).await
+        else {
+            panic!("expected setup event");
+        };
+        let serialized = serde_json::to_string(event.as_ref()).unwrap();
         assert_eq!(
-            event,
+            event.event,
             AgentEvent::Setup {
                 session_id: "bellhound-session".to_owned(),
                 telnyx_session_id: Some("relay-session".to_owned()),

@@ -28,6 +28,8 @@ pub struct CredentialConfig {
 pub struct RelayConfig {
     /// Local listener. Put a TLS tunnel or reverse proxy in front of this address.
     pub bind: SocketAddr,
+    /// Private loopback listener used by model-neutral CLI adapters.
+    pub control_bind: SocketAddr,
     /// WebSocket path before the secret token segment.
     pub path: String,
     /// HTTP webhook path before the secret token segment.
@@ -69,6 +71,7 @@ impl Default for RelayConfig {
     fn default() -> Self {
         Self {
             bind: "127.0.0.1:8787".parse().expect("literal socket address"),
+            control_bind: "127.0.0.1:8788".parse().expect("literal socket address"),
             path: "/conversation-relay".to_owned(),
             webhook_path: "/webhooks/telnyx".to_owned(),
             token_env: "BELLHOUND_RELAY_TOKEN".to_owned(),
@@ -116,6 +119,12 @@ impl Config {
         }
         if !self.relay.bind.ip().is_loopback() {
             bail!("relay.bind must be a loopback address; expose it through a TLS tunnel");
+        }
+        if !self.relay.control_bind.ip().is_loopback() {
+            bail!("relay.control_bind must be a loopback address");
+        }
+        if self.relay.control_bind == self.relay.bind {
+            bail!("relay.control_bind must differ from relay.bind");
         }
         if !self.relay.path.starts_with('/') || self.relay.path.ends_with('/') {
             bail!("relay.path must start with '/' and must not end with '/'");

@@ -6,6 +6,8 @@ keyring_account = "your-account"
 [relay]
 # Bellhound only binds to loopback. Put a WSS tunnel or reverse proxy in front.
 bind = "127.0.0.1:8787"
+# This second listener is never placed behind the public tunnel.
+control_bind = "127.0.0.1:8788"
 path = "/conversation-relay"
 webhook_path = "/webhooks/telnyx"
 token_env = "BELLHOUND_RELAY_TOKEN"

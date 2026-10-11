@@ -3,18 +3,20 @@
 Bellhound is a small, line-oriented telephone bridge for interactive agents. The agent that decides to call remains the reasoning agent; Bellhound supplies ears, a mouth, and telephone transport.
 
 ```text
-agent <-> JSON Lines over stdin/stdout <-> Bellhound <-> Telnyx Conversation Relay <-> telephone
+agent <-> JSON Lines or blocking CLI <-> Bellhound <-> Telnyx Conversation Relay <-> telephone
 ```
 
 Bellhound contains no language model and makes no decisions. It translates final speech-to-text frames into deterministic terminal events and translates agent `speak` commands into Telnyx text-to-speech frames.
 
-See [Architecture](docs/architecture.md) for the ownership and trust model and [Live setup](docs/live-setup.md) for the Telnyx/tunnel sequence.
+See [Architecture](docs/architecture.md) for the ownership and trust model, [Protocol](docs/protocol.md) for model-neutral integration, and [Live setup](docs/live-setup.md) for the Telnyx/tunnel sequence.
 
 ## Status
 
-Version `0.1.0` provides:
+Version `0.2.0` provides:
 
 - a strict JSON Lines agent protocol;
+- blocking `wait`, `speak`, and `hangup` CLI commands for any tool-using model;
+- a private loopback control listener with durable event cursors;
 - a deterministic local call simulator;
 - a loopback-only Conversation Relay WebSocket server;
 - one active call at a time;
@@ -32,6 +34,22 @@ cargo build --release
 ```
 
 Bellhound is ordinary Rust and targets macOS, Linux, and Windows. The WebSocket server binds only to loopback; use a TLS tunnel or reverse proxy to expose it as `wss://`.
+
+## Release archives
+
+The release workflow builds native archives for Apple Silicon and Intel macOS, x86-64 Linux, and x86-64 Windows. Each archive contains the binary, license, changelog, and authorship record plus a separate SHA-256 checksum.
+
+Package the current Unix target locally with:
+
+```sh
+scripts/package-unix.sh
+```
+
+On Windows PowerShell:
+
+```powershell
+scripts/package-windows.ps1
+```
 
 ## Configuration
 
@@ -52,6 +70,7 @@ keyring_account = "your-account"
 
 [relay]
 bind = "127.0.0.1:8787"
+control_bind = "127.0.0.1:8788"
 path = "/conversation-relay"
 webhook_path = "/webhooks/telnyx"
 token_env = "BELLHOUND_RELAY_TOKEN"
@@ -89,7 +108,7 @@ Stdout contains exactly one JSON event per line. Diagnostics go to stderr.
 Final caller speech:
 
 ```json
-{"emitted_at_unix_ms":1791512345678,"event":"utterance","session_id":"...","sequence":1,"text":"I need your help.","language":"en","final_utterance":true}
+{"event_id":3,"emitted_at_unix_ms":1791512345678,"event":"utterance","session_id":"...","sequence":1,"text":"I need your help.","language":"en","final_utterance":true}
 ```
 
 The agent sends commands on stdin:
@@ -101,6 +120,16 @@ The agent sends commands on stdin:
 
 Other events include `ready`, `connected`, `interrupted`, `dtmf`, `spoken`, `pong`, `ended`, `transport`, and `error`.
 Every event carries `emitted_at_unix_ms` so a caller can distinguish relay timing from agent and TTS delays.
+
+Models that cannot hold a PTY can use the blocking CLI adapter. `wait` returns immediately for a retained event or sleeps until the next event arrives:
+
+```sh
+bellhound --config bellhound.toml wait --after 2 --timeout-seconds 120
+bellhound --config bellhound.toml speak "Tell me what happened."
+bellhound --config bellhound.toml hangup --reason conversation_complete
+```
+
+The caller advances `--after` to the last processed `event_id`. Bellhound retains the most recent 256 events, so ordinary gaps between agent turns do not lose speech. The control listener stays on its separate loopback port and must never be exposed through the public WSS tunnel.
 
 ## Local simulation
 
@@ -153,3 +182,9 @@ Bellhound also cannot prove who answered a verified telephone. Add a DTMF or spo
 ## Name
 
 A bell hound is a small, loyal telephone runner: it fetches the human and brings the answer back to the agent.
+
+## Origin
+
+Bellhound was conceived with Justin Weiler and designed and engineered by Iris, his AI engineering partner working through OpenAI Codex. Read the factual authorship record and the space reserved for Justin's account in [AUTHORS.md](AUTHORS.md).
+
+Bellhound is MIT licensed. Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).

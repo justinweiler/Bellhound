@@ -5,6 +5,7 @@ Bellhound is a transport process, not an agent.
 ```text
 originating agent
   | JSON Lines on a long-lived PTY
+  | or blocking CLI commands over a private loopback port
   v
 Bellhound
   | bidirectional WebSocket text frames
@@ -15,7 +16,7 @@ Telnyx Conversation Relay
 telephone
 ```
 
-The originating agent launches Bellhound from its existing task and keeps the process session open. Final caller utterances appear as `utterance` events. The agent can inspect its existing task context, use its ordinary tools, and send a concise `speak` command. The call therefore remains inside one long agent turn without introducing a proxy model.
+The originating agent launches Bellhound from its existing task. It can keep the process session open or use one-shot `wait`, `speak`, and `hangup` commands against Bellhound's private control port. Final caller utterances appear as `utterance` events. The agent can inspect its existing task context, use its ordinary tools, and answer directly. The call therefore remains inside the originating agent's session without introducing a proxy model.
 
 ## Process boundaries
 
@@ -32,7 +33,7 @@ ready -> dialing -> connected -> utterance/speak loop -> ended
 ```
 
 Bellhound permits one active WebSocket call. Every final utterance receives a monotonically increasing sequence number. Calls stop at the configured maximum duration even when the model or caller forgets to hang up.
-Every event includes an emission timestamp in Unix milliseconds for latency tracing across STT arrival, agent response, and TTS dispatch.
+Every event includes a process-local event ID and an emission timestamp in Unix milliseconds for latency tracing across STT arrival, agent response, and TTS dispatch. The private control listener keeps 256 recent events so a model can resume from its last event ID without polling or losing a turn.
 
 ## Trust
 

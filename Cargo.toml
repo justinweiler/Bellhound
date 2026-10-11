@@ -1,9 +1,12 @@
 [package]
 name = "bellhound"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "A line-oriented telephone bridge for interactive AI agents"
 license = "MIT"
+readme = "README.md"
+keywords = ["voice", "telephone", "agents", "jsonl", "telnyx"]
+categories = ["command-line-utilities", "network-programming"]
 
 [dependencies]
 anyhow = "1.0"

@@ -47,6 +47,8 @@ Start the local relay:
 bellhound --config bellhound.toml relay
 ```
 
+Bellhound binds its public-tunnel listener and private model-control listener separately. Forward only `relay.bind` through the TLS tunnel. Keep `relay.control_bind` on loopback.
+
 Start a TLS tunnel or reverse proxy to the configured loopback address. Put its WSS URL in the ignored local `[telnyx]` section.
 
 In another process, dial:
@@ -62,7 +64,13 @@ Bellhound defaults to `Telnyx.NaturalHD.astra`, a voice verified against Telnyx'
 
 ## Agent loop
 
-Read one JSON line at a time from Bellhound stdout. Speak with:
+Read one JSON line at a time from Bellhound stdout, or block on the model-neutral CLI adapter:
+
+```sh
+bellhound --config bellhound.toml wait --after 0
+```
+
+Speak with:
 
 ```json
 {"command":"speak","text":"I found a mismatch between the live configuration and the expected release."}
