@@ -7,6 +7,7 @@
 - Add one-shot `speak`, `hangup`, and `ping` CLI commands.
 - Retain the most recent 256 events with process-local event IDs.
 - Warm the Telnyx greeting path with a short audible primer, then dispatch the queued call-specific opening as a measured speech frame after relay setup.
+- Add the Bellhound publication logo and an installable Codex skill with an on-demand session runtime for the Cora pilot.
 - Document the model-neutral adapter contract and project authorship.
 
 ## 0.1.0 - 2026-10-09

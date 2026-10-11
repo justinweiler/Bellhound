@@ -5,6 +5,8 @@ edition = "2024"
 description = "A line-oriented telephone bridge for interactive AI agents"
 license = "MIT"
 readme = "README.md"
+repository = "https://github.com/justinweiler/Bellhound"
+homepage = "https://github.com/justinweiler/Bellhound"
 keywords = ["voice", "telephone", "agents", "jsonl", "telnyx"]
 categories = ["command-line-utilities", "network-programming"]
 

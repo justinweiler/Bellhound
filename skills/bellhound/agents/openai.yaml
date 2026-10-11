@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bellhound"
+  short_description: "Call a human from the active agent session"
+  default_prompt: "Use Bellhound to call Justin and continue this task by voice."

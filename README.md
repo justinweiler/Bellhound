@@ -1,5 +1,9 @@
 # Bellhound
 
+<p align="center">
+  <img src="assets/bellhound-logo.png" width="320" alt="Bellhound: a violet running hound with a telephone ear, bell collar, and heartbeat waveform">
+</p>
+
 Bellhound is a small, line-oriented telephone bridge for interactive agents. The agent that decides to call remains the reasoning agent; Bellhound supplies ears, a mouth, and telephone transport.
 
 ```text
@@ -50,6 +54,16 @@ On Windows PowerShell:
 ```powershell
 scripts/package-windows.ps1
 ```
+
+## Codex skill
+
+Bellhound ships with an installable Codex skill that keeps the reasoning agent in its existing session while the CLI carries telephone turns. Install it from a checkout with:
+
+```sh
+ln -s "$PWD/skills/bellhound" "${CODEX_HOME:-$HOME/.codex}/skills/bellhound"
+```
+
+The skill includes an on-demand session helper that launches the local relay and a temporary public tunnel, writes an ignored runtime configuration, and tears both processes down after the call. See [the operator reference](skills/bellhound/references/operator.md) and [Cora pilot](skills/bellhound/references/cora-pilot.md).
 
 ## Configuration
 
