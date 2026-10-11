@@ -17,7 +17,7 @@ struct DialRequest<'a> {
 #[derive(Serialize)]
 struct ConversationRelayConfig<'a> {
     url: String,
-    greeting: &'a str,
+    greeting: &'static str,
     voice: &'a str,
     tts_provider: &'static str,
     language: &'a str,
@@ -50,10 +50,7 @@ struct HangupRequest {
     command_id: String,
 }
 
-pub async fn dial(config: &Config, opening: String) -> Result<()> {
-    if opening.trim().is_empty() {
-        bail!("opening text must not be empty");
-    }
+pub async fn dial(config: &Config) -> Result<()> {
     let telnyx = config
         .telnyx
         .as_ref()
@@ -77,7 +74,9 @@ pub async fn dial(config: &Config, opening: String) -> Result<()> {
         command_id: Uuid::new_v4().to_string(),
         conversation_relay_config: ConversationRelayConfig {
             url: websocket_url.clone(),
-            greeting: opening.trim(),
+            // A short audible primer completes and warms Telnyx's greeting path. Bellhound sends
+            // the measured, call-specific opening after the setup frame arrives.
+            greeting: "Bellhound.",
             voice: &telnyx.voice,
             tts_provider: "telnyx",
             language: &telnyx.language,

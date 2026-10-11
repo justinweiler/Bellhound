@@ -118,7 +118,23 @@ async fn main() -> Result<()> {
         Command::Dial { opening } => {
             let config = Config::load(&cli.config)?;
             config.validate()?;
-            telnyx::dial(&config, opening).await
+            if opening.trim().is_empty() {
+                anyhow::bail!("opening text must not be empty");
+            }
+            if opening.chars().count() > config.protocol.max_speak_chars {
+                anyhow::bail!(
+                    "opening text exceeds {} characters",
+                    config.protocol.max_speak_chars
+                );
+            }
+            control::prepare_opening(&config, opening.trim()).await?;
+            match telnyx::dial(&config).await {
+                Ok(()) => Ok(()),
+                Err(error) => {
+                    let _ = control::clear_opening(&config).await;
+                    Err(error)
+                }
+            }
         }
         Command::Wait {
             after,

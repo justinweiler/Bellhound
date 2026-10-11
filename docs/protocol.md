@@ -63,7 +63,7 @@ The control listener uses `relay.control_bind`, accepts only the configured toke
 An adapter for a model runtime needs only four operations:
 
 1. start or locate the Bellhound relay;
-2. call `dial` with opening text;
+2. call `dial` with opening text, which is queued and dispatched after relay `setup`;
 3. block on `wait` and pass `utterance` text to the originating model;
 4. translate the model's decision into `speak` or `hangup`.
 

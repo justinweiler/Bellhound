@@ -1,6 +1,6 @@
 use std::{
-    io::{BufRead, BufReader},
-    net::TcpListener,
+    io::{BufRead, BufReader, Read, Write},
+    net::{TcpListener, TcpStream},
     process::{Command, Stdio},
     thread,
     time::Duration,
@@ -57,10 +57,28 @@ max_speak_chars = 2000
     let mut stdout = BufReader::new(child.stdout.take().unwrap());
     assert_eq!(read_event(&mut stdout)["event"], "ready");
 
+    prepare_opening(control_port, token, "Bellhound opening.");
+
     let (mut websocket, _) =
         connect(format!("ws://127.0.0.1:{port}/conversation-relay/{token}")).unwrap();
     let connected = read_event(&mut stdout);
     assert_eq!(connected["event"], "connected");
+
+    websocket
+        .send(Message::Text(
+            r#"{"type":"setup","sessionId":"relay-session","callControlId":"call-control","callSessionId":"call-session","callStatus":"active"}"#
+                .into(),
+        ))
+        .unwrap();
+    assert_eq!(read_event(&mut stdout)["event"], "setup");
+    let outbound = websocket.read().unwrap();
+    let Message::Text(outbound) = outbound else {
+        panic!("expected the prepared opening frame");
+    };
+    let outbound: Value = serde_json::from_str(outbound.as_str()).unwrap();
+    assert_eq!(outbound["type"], "text");
+    assert_eq!(outbound["token"], "Bellhound opening.");
+    assert_eq!(read_event(&mut stdout)["event"], "spoken");
 
     let waiter = Command::new(env!("CARGO_BIN_EXE_bellhound"))
         .args([
@@ -68,7 +86,7 @@ max_speak_chars = 2000
             config_path.to_str().unwrap(),
             "wait",
             "--after",
-            "2",
+            "4",
             "--timeout-seconds",
             "5",
         ])
@@ -89,7 +107,7 @@ max_speak_chars = 2000
     assert!(waited.status.success());
     let waited: Value = serde_json::from_slice(&waited.stdout).unwrap();
     assert_eq!(waited["event"], "utterance");
-    assert_eq!(waited["event_id"], 3);
+    assert_eq!(waited["event_id"], 5);
     assert_eq!(waited["text"], "Did the canary pass?");
 
     let utterance = read_event(&mut stdout);
@@ -124,6 +142,21 @@ max_speak_chars = 2000
 
     child.kill().unwrap();
     child.wait().unwrap();
+}
+
+fn prepare_opening(port: u16, token: &str, text: &str) {
+    let body = serde_json::json!({"text": text}).to_string();
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    write!(
+        stream,
+        "POST /v1/opening HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\nContent-Type: application/json\r\nX-Bellhound-Token: {token}\r\nContent-Length: {}\r\n\r\n{body}",
+        body.len()
+    )
+    .unwrap();
+    stream.flush().unwrap();
+    let mut response = String::new();
+    stream.read_to_string(&mut response).unwrap();
+    assert!(response.starts_with("HTTP/1.1 202"), "{response}");
 }
 
 fn read_event(reader: &mut impl BufRead) -> Value {

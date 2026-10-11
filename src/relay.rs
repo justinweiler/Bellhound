@@ -1,6 +1,6 @@
 use std::{
     sync::{Arc, Mutex as StdMutex},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use anyhow::{Context, Result};
@@ -35,6 +35,12 @@ struct AppState {
     commands: broadcast::Sender<AgentCommand>,
     active_session: Arc<Mutex<Option<String>>>,
     active_call_control_id: Arc<StdMutex<Option<String>>>,
+    pending_opening: Arc<StdMutex<Option<PendingOpening>>>,
+}
+
+struct PendingOpening {
+    text: String,
+    expires_at: Instant,
 }
 
 pub async fn run(config: Config) -> Result<()> {
@@ -57,6 +63,9 @@ pub async fn run(config: Config) -> Result<()> {
         commands.clone(),
     ));
 
+    let listener = tokio::net::TcpListener::bind(config.relay.bind).await?;
+    let control_listener = tokio::net::TcpListener::bind(config.relay.control_bind).await?;
+
     sink.send(AgentEvent::Ready {
         version: env!("CARGO_PKG_VERSION"),
         bind: config.relay.bind.to_string(),
@@ -70,6 +79,7 @@ pub async fn run(config: Config) -> Result<()> {
         commands,
         active_session: Arc::new(Mutex::new(None)),
         active_call_control_id: Arc::new(StdMutex::new(None)),
+        pending_opening: Arc::new(StdMutex::new(None)),
     };
     let app = Router::new()
         .route(&config.route(), get(upgrade))
@@ -78,9 +88,8 @@ pub async fn run(config: Config) -> Result<()> {
     let control_app = Router::new()
         .route("/v1/events/next", get(next_event))
         .route("/v1/commands", post(control_command))
+        .route("/v1/opening", post(prepare_opening).delete(clear_opening))
         .with_state(state);
-    let listener = tokio::net::TcpListener::bind(config.relay.bind).await?;
-    let control_listener = tokio::net::TcpListener::bind(config.relay.control_bind).await?;
     tracing::info!(address = %config.relay.bind, "Bellhound relay listening");
     tracing::info!(address = %config.relay.control_bind, "Bellhound control listener ready");
 
@@ -165,6 +174,54 @@ async fn control_command(
         &state.commands,
     );
     StatusCode::ACCEPTED
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OpeningRequest {
+    text: String,
+}
+
+async fn prepare_opening(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<OpeningRequest>,
+) -> StatusCode {
+    if !control_authorized(&headers, &state) {
+        return StatusCode::UNAUTHORIZED;
+    }
+    let text = request.text.trim();
+    if text.is_empty() || text.chars().count() > state.config.protocol.max_speak_chars {
+        return StatusCode::BAD_REQUEST;
+    }
+    if state.active_session.lock().await.is_some() {
+        return StatusCode::CONFLICT;
+    }
+    let expires_at =
+        Instant::now() + Duration::from_secs(state.config.relay.max_call_seconds.max(30) + 60);
+    match state.pending_opening.lock() {
+        Ok(mut opening) => {
+            *opening = Some(PendingOpening {
+                text: text.to_owned(),
+                expires_at,
+            });
+            StatusCode::ACCEPTED
+        }
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
+
+async fn clear_opening(State(state): State<AppState>, headers: HeaderMap) -> StatusCode {
+    if !control_authorized(&headers, &state) {
+        return StatusCode::UNAUTHORIZED;
+    }
+    match state.pending_opening.lock() {
+        Ok(mut opening) => {
+            *opening = None;
+            StatusCode::NO_CONTENT
+        }
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    }
 }
 
 async fn webhook(
@@ -291,7 +348,26 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
             message = ws_receiver.next() => {
                 match message {
                     Some(Ok(Message::Text(text))) => {
-                        handle_telnyx_text(&state, &session_id, &mut sequence, text.as_str());
+                        if let Some(opening) = handle_telnyx_text(
+                            &state,
+                            &session_id,
+                            &mut sequence,
+                            text.as_str(),
+                        ) {
+                            let frame = telnyx_text_frame(opening.clone(), true);
+                            if ws_sender
+                                .send(Message::Text(frame.to_string().into()))
+                                .await
+                                .is_err()
+                            {
+                                end_reason = "opening_send_failed".to_owned();
+                                break;
+                            }
+                            state.sink.send(AgentEvent::Spoken {
+                                session_id: session_id.clone(),
+                                text: opening,
+                            });
+                        }
                     }
                     Some(Ok(Message::Close(_))) | None => break,
                     Some(Ok(Message::Ping(payload))) => {
@@ -324,13 +400,21 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     if let Ok(mut call_control_id) = state.active_call_control_id.lock() {
         *call_control_id = None;
     }
+    if let Ok(mut opening) = state.pending_opening.lock() {
+        *opening = None;
+    }
     state.sink.send(AgentEvent::Ended {
         session_id,
         reason: end_reason,
     });
 }
 
-fn handle_telnyx_text(state: &AppState, session_id: &str, sequence: &mut u64, source: &str) {
+fn handle_telnyx_text(
+    state: &AppState,
+    session_id: &str,
+    sequence: &mut u64,
+    source: &str,
+) -> Option<String> {
     let value: serde_json::Value = match serde_json::from_str(source) {
         Ok(value) => value,
         Err(error) => {
@@ -339,7 +423,7 @@ fn handle_telnyx_text(state: &AppState, session_id: &str, sequence: &mut u64, so
                 message: error.to_string(),
                 retryable: true,
             });
-            return;
+            return None;
         }
     };
     let frame: TelnyxFrame = match serde_json::from_value(value.clone()) {
@@ -350,10 +434,11 @@ fn handle_telnyx_text(state: &AppState, session_id: &str, sequence: &mut u64, so
                 message: error.to_string(),
                 retryable: true,
             });
-            return;
+            return None;
         }
     };
 
+    let mut opening = None;
     match frame.kind.as_str() {
         "prompt" => {
             let final_utterance = frame.last.unwrap_or(false);
@@ -396,12 +481,19 @@ fn handle_telnyx_text(state: &AppState, session_id: &str, sequence: &mut u64, so
                 direction: frame.direction,
                 call_status: frame.call_status,
             });
+            if let Ok(mut pending) = state.pending_opening.lock()
+                && let Some(candidate) = pending.take()
+                && candidate.expires_at > Instant::now()
+            {
+                opening = Some(candidate.text);
+            }
         }
         _ => state.sink.send(AgentEvent::Transport {
             session_id: session_id.to_owned(),
             kind: frame.kind,
         }),
     }
+    opening
 }
 
 async fn request_call_hangup(state: &AppState) {
@@ -442,6 +534,7 @@ mod tests {
             commands,
             active_session: Arc::new(Mutex::new(None)),
             active_call_control_id: Arc::new(StdMutex::new(None)),
+            pending_opening: Arc::new(StdMutex::new(None)),
         };
         let mut sequence = 0;
         handle_telnyx_text(
@@ -477,6 +570,7 @@ mod tests {
             commands,
             active_session: Arc::new(Mutex::new(None)),
             active_call_control_id: Arc::new(StdMutex::new(None)),
+            pending_opening: Arc::new(StdMutex::new(None)),
         };
         let mut sequence = 0;
         handle_telnyx_text(

@@ -171,6 +171,7 @@ bellhound --config bellhound.toml dial \
 ```
 
 Bellhound embeds the Conversation Relay settings directly in the Dial request. The call has the same hard duration limit as the relay configuration.
+The `dial` command first queues its opening on the private control listener. Telnyx establishes Conversation Relay with a short “Bellhound” primer that completes and warms its greeting path; when Bellhound receives the `setup` frame, it sends the real opening as an ordinary measured `speak` frame and emits `spoken`. This avoids an ambiguous silent placeholder while keeping the call-specific opening observable.
 An agent `hangup` command ends both the relay session and the underlying Call Control telephone leg.
 
 ## Trust boundary

@@ -58,7 +58,7 @@ bellhound --config bellhound.toml dial \
   --opening "Justin, I found something and need your judgment."
 ```
 
-The Dial request embeds Conversation Relay. Telnyx starts STT/TTS automatically when the destination answers and connects to the WSS URL.
+The Dial request embeds Conversation Relay. Telnyx starts STT/TTS automatically when the destination answers and connects to the WSS URL. A short “Bellhound” primer completes and warms Telnyx's greeting path; Bellhound queues the requested opening locally and dispatches it after Telnyx sends `setup`, producing a timestamped `spoken` event for the call-specific introduction.
 
 Bellhound defaults to `Telnyx.NaturalHD.astra`, a voice verified against Telnyx's standalone TTS endpoint. Ultra voices require a real Ultra voice ID; a friendly display name such as `Telnyx.Ultra.Callie` is invalid and can produce a connected but silent call.
 

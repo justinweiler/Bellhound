@@ -74,3 +74,42 @@ pub async fn command(config: &Config, command: AgentCommand) -> Result<()> {
     println!("{}", serde_json::json!({"accepted": true}));
     Ok(())
 }
+
+pub async fn prepare_opening(config: &Config, opening: &str) -> Result<()> {
+    let token = relay_token(config)?;
+    let response = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()?
+        .post(format!("{}/v1/opening", base_url(config)))
+        .header(TOKEN_HEADER, token)
+        .json(&serde_json::json!({"text": opening}))
+        .send()
+        .await
+        .context("failed to prepare the opening on the local Bellhound relay")?;
+    if !response.status().is_success() {
+        bail!(
+            "Bellhound opening preparation failed with HTTP {}",
+            response.status()
+        );
+    }
+    Ok(())
+}
+
+pub async fn clear_opening(config: &Config) -> Result<()> {
+    let token = relay_token(config)?;
+    let response = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()?
+        .delete(format!("{}/v1/opening", base_url(config)))
+        .header(TOKEN_HEADER, token)
+        .send()
+        .await
+        .context("failed to clear the opening on the local Bellhound relay")?;
+    if !response.status().is_success() {
+        bail!(
+            "Bellhound opening cleanup failed with HTTP {}",
+            response.status()
+        );
+    }
+    Ok(())
+}
