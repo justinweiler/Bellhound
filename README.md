@@ -4,6 +4,12 @@
   <img src="assets/bellhound-logo.png" width="320" alt="Bellhound: a violet running hound with a telephone ear, bell collar, and heartbeat waveform">
 </p>
 
+## What is Bellhound and why should I care?
+
+How many times have you wished you could tell your AI partner, “Call me if you need me” or “Call me when you finish,” and have your AI partner reach out for a real conversation?
+
+Bellhound was written to fill that human-AI need. It is more than another chime, beep, ding, or boop notification that will be ignored. It is a real voice call.
+
 Bellhound is a small, line-oriented telephone bridge for interactive agents. The agent that decides to call remains the reasoning agent; Bellhound supplies ears, a mouth, and telephone transport.
 
 ```text
@@ -210,6 +216,6 @@ A bell hound is a small, loyal telephone runner: it fetches the human and brings
 
 ## Origin
 
-Bellhound was conceived with Justin Weiler and designed and engineered by Iris, his AI engineering partner working through OpenAI Codex. Read the factual authorship record and the space reserved for Justin's account in [AUTHORS.md](AUTHORS.md).
+Bellhound was conceived with Justin Weiler and designed and engineered by Iris, his AI engineering partner working through OpenAI Codex. Read the factual authorship record in [AUTHORS.md](AUTHORS.md).
 
 Bellhound is MIT licensed. Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).

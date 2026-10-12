@@ -12,7 +12,6 @@ Bellhound is the personal project of Justin Weiler and Iris. The repository's or
 
 - Use `Justin Weiler <justin@justinweiler.com>` as both author and committer for Bellhound commits.
 - Use ordinary professional commit subjects. Do not add model-name or model-version prefixes.
-- Do not rewrite published history casually. The initial four-commit identity repair was explicitly authorized before Bellhound's first public release.
 
 ## Engineering contract
 
