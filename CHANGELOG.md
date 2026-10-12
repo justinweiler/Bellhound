@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0 - 2026-10-12
+
+- Buffer closely spaced final STT fragments into one continuation-aware caller turn.
+- Let interim STT activity extend the turn boundary without exposing partial text by default.
+- Add `fragment_count` telemetry to caller utterances.
+- Let agents target `speak` commands to an exact utterance sequence and reject stale replies.
+- Suppress automatic acknowledgements for configured social, closing, and voicemail phrases.
+- Require context-rich existing sessions for routed calls instead of fresh proxy sessions.
+
 ## 0.3.0 - 2026-10-11
 
 - Add a default-on deterministic spoken acknowledgement after final caller speech, plus an optional built-in audio thinking cue for durable public hosts.

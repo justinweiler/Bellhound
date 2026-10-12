@@ -44,6 +44,8 @@ pub struct RelayConfig {
     pub max_call_seconds: u64,
     /// Emit interim STT fragments as events. Final utterances are always emitted.
     pub emit_partial_transcripts: bool,
+    /// Quiet period after the latest transcript frame before finalizing a caller turn.
+    pub continuation_window_ms: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -66,6 +68,10 @@ pub struct AcknowledgementConfig {
     pub sound_url: Option<String>,
     /// Text spoken by Bellhound. This is transport behavior, not model output.
     pub text: String,
+    /// Short social, closing, or voicemail phrases that should not trigger acknowledgement.
+    pub suppress_phrases: Vec<String>,
+    /// Phrases that suppress acknowledgements for the remainder of the call.
+    pub suppress_for_session_phrases: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
@@ -104,6 +110,7 @@ impl Default for RelayConfig {
             token_env: "BELLHOUND_RELAY_TOKEN".to_owned(),
             max_call_seconds: 300,
             emit_partial_transcripts: false,
+            continuation_window_ms: 900,
         }
     }
 }
@@ -134,6 +141,19 @@ impl Default for AcknowledgementConfig {
             mode: AcknowledgementMode::Speech,
             sound_url: Some(DEFAULT_ACKNOWLEDGEMENT_SOUND_URL.to_owned()),
             text: "Got it. Give me a moment.".to_owned(),
+            suppress_phrases: vec![
+                "thank you".to_owned(),
+                "thanks".to_owned(),
+                "bye".to_owned(),
+                "goodbye".to_owned(),
+                "good night".to_owned(),
+                "goodnight".to_owned(),
+                "love you".to_owned(),
+            ],
+            suppress_for_session_phrases: vec![
+                "call has been forwarded to an automated voice messaging system".to_owned(),
+                "the person you are trying to reach is not available".to_owned(),
+            ],
         }
     }
 }
@@ -177,6 +197,9 @@ impl Config {
         if self.relay.max_call_seconds == 0 {
             bail!("relay.max_call_seconds must be greater than zero");
         }
+        if self.relay.continuation_window_ms > 5_000 {
+            bail!("relay.continuation_window_ms must not exceed 5000");
+        }
         if self.protocol.max_speak_chars == 0 {
             bail!("protocol.max_speak_chars must be greater than zero");
         }
@@ -193,6 +216,15 @@ impl Config {
             && !sound_url.starts_with("https://")
         {
             bail!("acknowledgement.sound_url must start with https://");
+        }
+        if self
+            .acknowledgement
+            .suppress_phrases
+            .iter()
+            .chain(self.acknowledgement.suppress_for_session_phrases.iter())
+            .any(|phrase| phrase.trim().is_empty())
+        {
+            bail!("acknowledgement suppression phrases must not contain empty phrases");
         }
         if let Some(telnyx) = &self.telnyx {
             if telnyx.connection_id.trim().is_empty() {
@@ -275,6 +307,7 @@ mod tests {
         let config = Config::default();
         config.validate().unwrap();
         assert!(config.acknowledgement.enabled);
+        assert_eq!(config.relay.continuation_window_ms, 900);
         assert_eq!(config.acknowledgement.mode, AcknowledgementMode::Speech);
         assert_eq!(
             config.acknowledgement.sound_url.as_deref(),
@@ -305,6 +338,19 @@ mod tests {
                 .unwrap_err()
                 .to_string()
                 .contains("sound_url")
+        );
+    }
+
+    #[test]
+    fn rejects_excessive_continuation_window() {
+        let mut config = Config::default();
+        config.relay.continuation_window_ms = 5_001;
+        assert!(
+            config
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("continuation_window_ms")
         );
     }
 

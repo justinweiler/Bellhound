@@ -42,7 +42,22 @@ pub async fn run(config: Config, script: PathBuf) -> Result<()> {
             continue;
         }
         match serde_json::from_str::<AgentCommand>(&line) {
-            Ok(AgentCommand::Speak { text, .. }) => {
+            Ok(AgentCommand::Speak {
+                text,
+                responding_to_sequence,
+                ..
+            }) => {
+                if responding_to_sequence.is_some_and(|target| target != sequence) {
+                    sink.send(AgentEvent::Error {
+                        code: "stale_response".to_owned(),
+                        message: format!(
+                            "response targets utterance {} but active utterance is {sequence}",
+                            responding_to_sequence.unwrap()
+                        ),
+                        retryable: true,
+                    });
+                    continue;
+                }
                 if text.chars().count() > config.protocol.max_speak_chars {
                     sink.send(AgentEvent::Error {
                         code: "speak_too_long".to_owned(),
@@ -122,6 +137,7 @@ fn emit_prompt(sink: &output::EventSink, session_id: &str, sequence: u64, frame:
         text: frame.voice_prompt.unwrap_or_default(),
         language: frame.lang,
         final_utterance: true,
+        fragment_count: 1,
     });
 }
 

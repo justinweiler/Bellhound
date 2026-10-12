@@ -12,7 +12,7 @@ Keep the reasoning and tool use in the current session. Bellhound supplies telep
 1. Read [references/operator.md](references/operator.md) before the first live call in a session.
 2. Start an on-demand runtime with `scripts/session.sh run` in a long-lived foreground execution session. Keep that execution session alive for the entire call. Resolve `BELLHOUND_RELAY_TOKEN` from the local credential store without printing it.
 3. Use the returned runtime config and event cursor to dial with a concise introduction that identifies the calling agent and the concrete reason for calling.
-4. Block with `bellhound wait --after <cursor>`. Advance the cursor for every event. Respond to final `utterance` events from this same session with `bellhound speak`.
+4. Block with `bellhound wait --after <cursor>`. Advance the cursor for every event. Respond to final `utterance` events from this same session with `bellhound speak --responding-to <sequence>`. Treat `stale_response` as a request to drain newer events and reconsider the reply.
 5. Perform ordinary authorized tool work between telephone turns when the caller requests it. Report the actual result over the call.
 6. Send `bellhound hangup` when the conversation ends, verify an `ended` event, and run `scripts/session.sh stop`. Confirm the foreground owner exits and final status reports all three processes stopped.
 

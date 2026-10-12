@@ -18,7 +18,9 @@ Every event is one JSON object with these common fields:
 
 The current event names are `ready`, `connected`, `setup`, `utterance`, `interrupted`, `dtmf`, `acknowledged`, `acknowledgement_audio_fetched`, `spoken`, `pong`, `ended`, `transport`, `call_status`, and `error`.
 
-With acknowledgements enabled, Bellhound starts a configurable grace timer after a final utterance. A `speak` command received during that grace period cancels it. In the default speech mode Bellhound sends the fixed phrase and emits:
+Bellhound merges closely spaced final transcript fragments after a configurable quiet window. Interim STT frames extend that window even when partial transcripts are not emitted. The resulting final `utterance` contains one `sequence` and a `fragment_count`.
+
+With acknowledgements enabled, Bellhound starts a configurable grace timer after the merged final utterance. A matching `speak` command received during that grace period cancels it. Configured short social, closing, and voicemail phrases suppress the acknowledgement. In the default speech mode Bellhound sends the fixed phrase and emits:
 
 ```json
 {"event":"acknowledged","responding_to_sequence":4,"mode":"speech","text":"Got it. Give me a moment.","response_latency_ms":501}
@@ -37,12 +39,12 @@ Sound mode uses a configured public `sound_url` or Bellhound's authenticated emb
 The JSON Lines command forms are:
 
 ```json
-{"command":"speak","text":"I need your judgment.","last":true}
+{"command":"speak","text":"I need your judgment.","last":true,"responding_to_sequence":4}
 {"command":"hangup","reason":"conversation_complete"}
 {"command":"ping"}
 ```
 
-Unknown fields and unknown commands are rejected. Text size is bounded by `protocol.max_speak_chars`.
+Unknown fields and unknown commands are rejected. Text size is bounded by `protocol.max_speak_chars`. `responding_to_sequence` is optional for backward compatibility, but live adapters should always supply it. Bellhound emits a retryable `stale_response` error instead of speaking when the target is no longer the active unanswered utterance or a newer caller turn is still being buffered.
 
 ## Blocking CLI adapter
 
@@ -65,7 +67,7 @@ If a cursor falls more than 256 events behind, Bellhound returns HTTP 409 with `
 Commands use the same local control path:
 
 ```sh
-bellhound --config bellhound.toml speak "Done."
+bellhound --config bellhound.toml speak "Done." --responding-to 4
 bellhound --config bellhound.toml hangup --reason conversation_complete
 bellhound --config bellhound.toml ping
 ```

@@ -1,5 +1,7 @@
 # Bellhound operator reference
 
+For a structured end-to-end test, use [the conversation canary](../../../docs/conversation-canary.md).
+
 ## Local installation
 
 - Repository: `/Users/justinweiler/Bellhound`
@@ -62,10 +64,11 @@ Set `cursor` to every returned `event_id`, including setup, spoken, interruption
 ```sh
 BELLHOUND_RELAY_TOKEN=$(/usr/bin/security find-generic-password -s 'Bellhound relay token' -a 'default' -w) \
   target/release/bellhound --config work/session/bellhound.toml speak \
-  'I checked the live state. The deployment is healthy.'
+  'I checked the live state. The deployment is healthy.' \
+  --responding-to 6
 ```
 
-By default, Bellhound says the fixed phrase `Got it. Give me a moment.` when the reply does not arrive within 500 ms. Advance the cursor through its `acknowledged` event and continue the same agent turn. The eventual `spoken` event reports `response_latency_ms` and `acknowledgement_preceded`. The acknowledgement confirms that Bellhound heard the caller; it is not an answer from another model.
+Use the `sequence` from the final utterance being answered. If Bellhound emits `stale_response`, do not resend blindly: advance through buffered events, reassess the latest caller turn, and answer that sequence. By default, Bellhound merges continuation fragments after 900 ms of transcript quiet and says the fixed phrase `Got it. Give me a moment.` when the targeted reply does not arrive within another 500 ms. Advance the cursor through its `acknowledged` event and continue the same agent turn. Social, closing, and voicemail phrases may intentionally receive no acknowledgement. The eventual `spoken` event reports `response_latency_ms` and `acknowledgement_preceded`. The acknowledgement confirms that Bellhound heard the caller; it is not an answer from another model.
 
 The optional `sound` mode uses a short cue that is interruptible by the caller and preemptible by the agent reply. Bellhound defaults `sound_url` to the public `justinweiler/Bellhound-Sounds` asset and permits any other public HTTPS cue. Without a URL, Bellhound exposes its embedded cue through the relay host. Enable sound mode only after proving that Telnyx fetches the media URL. The accountless quick tunnel did not receive Telnyx's embedded media fetch during the October 11 pilot.
 

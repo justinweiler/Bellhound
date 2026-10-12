@@ -49,7 +49,7 @@ bellhound --config bellhound.toml relay
 
 Bellhound binds its public-tunnel listener and private model-control listener separately. Forward only `relay.bind` through the TLS tunnel. Keep `relay.control_bind` on loopback.
 
-The default configuration speaks `Got it. Give me a moment.` when no agent reply arrives within 500 ms of a final transcript. Configure `[acknowledgement]` to change the phrase or grace period, or disable it for a consistently sub-second adapter. Bellhound cancels an unfired acknowledgement when the real reply arrives.
+The default configuration first waits for 900 ms of transcript quiet so closely spaced final fragments become one caller turn. It then speaks `Got it. Give me a moment.` when no targeted agent reply arrives within another 500 ms. Configure `relay.continuation_window_ms` and `[acknowledgement]` to tune these delays. `acknowledgement.suppress_phrases` prevents the holding phrase from answering brief closings; `suppress_for_session_phrases` disables further acknowledgements after a voicemail announcement. Bellhound cancels an unfired acknowledgement when the real reply arrives.
 
 `mode = "sound"` sends Telnyx a preemptible, interruptible `play` frame. The default `sound_url` is the public Bellhound cue hosted in `justinweiler/Bellhound-Sounds`; replace it with any public HTTPS audio asset. Without `sound_url`, Bellhound serves its built-in MP3 at a token-authenticated path under the same HTTPS/WSS host. Use sound mode only after proving that Telnyx accepts the configured media URL. The accountless `trycloudflare.com` quick tunnel carried the relay WebSocket but Telnyx did not fetch its embedded-audio URL during the October 11 canary.
 

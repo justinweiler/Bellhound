@@ -18,11 +18,11 @@ agent <-> JSON Lines or blocking CLI <-> Bellhound <-> Telnyx Conversation Relay
 
 Bellhound contains no language model and makes no decisions. It translates final speech-to-text frames into deterministic terminal events and translates agent `speak` commands into Telnyx text-to-speech frames. While an agent is thinking, Bellhound can speak a fixed holding phrase or play a short built-in cue so the caller does not hear unexplained silence.
 
-See [Architecture](docs/architecture.md) for the ownership and trust model, [Protocol](docs/protocol.md) for model-neutral integration, and [Live setup](docs/live-setup.md) for the Telnyx/tunnel sequence.
+See [Architecture](docs/architecture.md) for the ownership and trust model, [Protocol](docs/protocol.md) for model-neutral integration, [Live setup](docs/live-setup.md) for the Telnyx/tunnel sequence, and the [conversation canary](docs/conversation-canary.md) for a repeatable human test.
 
 ## Status
 
-Version `0.3.0` provides:
+Version `0.4.0` provides:
 
 - a strict JSON Lines agent protocol;
 - blocking `wait`, `speak`, and `hangup` CLI commands for any tool-using model;
@@ -35,6 +35,7 @@ Version `0.3.0` provides:
 - Telnyx Call Control hangup for the telephone leg;
 - environment or operating-system credential-store API-key resolution.
 - a default-on thinking acknowledgement with cancellation, optional audio cue, and per-turn latency telemetry.
+- continuation-aware caller turns and sequence-targeted replies that reject stale answers.
 
 Live use requires a dedicated Telnyx Call Control application and a durable WSS tunnel or host.
 
@@ -97,6 +98,7 @@ webhook_path = "/webhooks/telnyx"
 token_env = "BELLHOUND_RELAY_TOKEN"
 max_call_seconds = 300
 emit_partial_transcripts = false
+continuation_window_ms = 900
 
 [protocol]
 max_speak_chars = 2000
@@ -107,9 +109,11 @@ delay_ms = 500
 mode = "speech"
 sound_url = "https://raw.githubusercontent.com/justinweiler/Bellhound-Sounds/master/bellhound-thinking.mp3"
 text = "Got it. Give me a moment."
+suppress_phrases = ["thank you", "thanks", "bye", "goodbye", "good night", "goodnight", "love you"]
+suppress_for_session_phrases = ["call has been forwarded to an automated voice messaging system", "the person you are trying to reach is not available"]
 ```
 
-The acknowledgement is deterministic transport behavior, never model output. The default `speech` mode uses the fixed phrase. `sound` mode sends Telnyx a preemptible, interruptible `play` frame and defaults to Bellhound's public [thinking cue](https://github.com/justinweiler/Bellhound-Sounds). Change `sound_url` to use another public HTTPS asset; when the field is omitted, Bellhound serves its embedded MP3 through the authenticated relay URL. Sound mode falls back to `text` only when Bellhound cannot form either media URL. Set `enabled = false` for an adapter that consistently responds fast enough to make a cue unnecessary. Bellhound cancels its timer when the agent answers within the grace period.
+Bellhound waits for `continuation_window_ms` of transcript quiet before exposing a final caller turn. Final fragments inside that window are merged, and interim STT activity extends it. The acknowledgement is deterministic transport behavior, never model output. The default `speech` mode uses the fixed phrase. `suppress_phrases` prevents it from answering brief social closings, while `suppress_for_session_phrases` disables further acknowledgements after a voicemail announcement. `sound` mode sends Telnyx a preemptible, interruptible `play` frame and defaults to Bellhound's public [thinking cue](https://github.com/justinweiler/Bellhound-Sounds). Change `sound_url` to use another public HTTPS asset; when the field is omitted, Bellhound serves its embedded MP3 through the authenticated relay URL. Sound mode falls back to `text` only when Bellhound cannot form either media URL. Set `enabled = false` for an adapter that consistently responds fast enough to make a cue unnecessary. Bellhound cancels its timer when the agent answers within the grace period.
 
 The relay token never belongs in the TOML file. Supply an unguessable value of at least 24 characters through the configured environment variable.
 
@@ -144,7 +148,7 @@ Final caller speech:
 The agent sends commands on stdin:
 
 ```json
-{"command":"speak","text":"Tell me what happened."}
+{"command":"speak","text":"Tell me what happened.","responding_to_sequence":1}
 {"command":"hangup","reason":"conversation_complete"}
 ```
 
@@ -155,11 +159,11 @@ Models that cannot hold a PTY can use the blocking CLI adapter. `wait` returns i
 
 ```sh
 bellhound --config bellhound.toml wait --after 2 --timeout-seconds 120
-bellhound --config bellhound.toml speak "Tell me what happened."
+bellhound --config bellhound.toml speak "Tell me what happened." --responding-to 1
 bellhound --config bellhound.toml hangup --reason conversation_complete
 ```
 
-The caller advances `--after` to the last processed `event_id`. Bellhound retains the most recent 256 events, so ordinary gaps between agent turns do not lose speech. The control listener stays on its separate loopback port and must never be exposed through the public WSS tunnel.
+The caller advances `--after` to the last processed `event_id`. Final utterances include `fragment_count`. Agents should target every reply with the utterance `sequence`; Bellhound emits `stale_response` instead of attaching a late reply to a newer turn. Bellhound retains the most recent 256 events, so ordinary gaps between agent turns do not lose speech. The control listener stays on its separate loopback port and must never be exposed through the public WSS tunnel.
 
 ## Local simulation
 

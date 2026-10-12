@@ -8,6 +8,8 @@ pub enum AgentCommand {
         text: String,
         #[serde(default = "default_true")]
         last: bool,
+        #[serde(default)]
+        responding_to_sequence: Option<u64>,
     },
     Hangup {
         reason: Option<String>,
@@ -32,6 +34,7 @@ pub enum AgentEvent {
         text: String,
         language: Option<String>,
         final_utterance: bool,
+        fragment_count: usize,
     },
     Interrupted {
         session_id: String,
@@ -159,6 +162,22 @@ mod tests {
             AgentCommand::Speak {
                 text: "Hello".to_owned(),
                 last: true,
+                responding_to_sequence: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parses_sequence_targeted_speak_command() {
+        let command: AgentCommand =
+            serde_json::from_str(r#"{"command":"speak","text":"Done","responding_to_sequence":7}"#)
+                .unwrap();
+        assert_eq!(
+            command,
+            AgentCommand::Speak {
+                text: "Done".to_owned(),
+                last: true,
+                responding_to_sequence: Some(7),
             }
         );
     }

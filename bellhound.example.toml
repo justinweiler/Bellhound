@@ -13,6 +13,7 @@ webhook_path = "/webhooks/telnyx"
 token_env = "BELLHOUND_RELAY_TOKEN"
 max_call_seconds = 300
 emit_partial_transcripts = false
+continuation_window_ms = 900
 
 [protocol]
 max_speak_chars = 2000
@@ -23,6 +24,19 @@ delay_ms = 500
 mode = "speech"
 sound_url = "https://raw.githubusercontent.com/justinweiler/Bellhound-Sounds/master/bellhound-thinking.mp3"
 text = "Got it. Give me a moment."
+suppress_phrases = [
+  "thank you",
+  "thanks",
+  "bye",
+  "goodbye",
+  "good night",
+  "goodnight",
+  "love you",
+]
+suppress_for_session_phrases = [
+  "call has been forwarded to an automated voice messaging system",
+  "the person you are trying to reach is not available",
+]
 
 # Add this section in your ignored local file when the Call Control application exists.
 # [telnyx]

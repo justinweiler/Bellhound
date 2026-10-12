@@ -68,6 +68,9 @@ enum Command {
         /// Marks this chunk as the end of the current response.
         #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
         last: bool,
+        /// Caller utterance sequence this response answers.
+        #[arg(long)]
+        responding_to: Option<u64>,
     },
     /// End the active telephone call through the local control listener.
     Hangup {
@@ -144,10 +147,22 @@ async fn main() -> Result<()> {
             config.validate()?;
             control::wait(&config, after, timeout_seconds).await
         }
-        Command::Speak { text, last } => {
+        Command::Speak {
+            text,
+            last,
+            responding_to,
+        } => {
             let config = Config::load(&cli.config)?;
             config.validate()?;
-            control::command(&config, AgentCommand::Speak { text, last }).await
+            control::command(
+                &config,
+                AgentCommand::Speak {
+                    text,
+                    last,
+                    responding_to_sequence: responding_to,
+                },
+            )
+            .await
         }
         Command::Hangup { reason } => {
             let config = Config::load(&cli.config)?;

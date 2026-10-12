@@ -54,10 +54,23 @@ struct PendingTurn {
     acknowledgement_sent: bool,
 }
 
+struct PendingIncomingTurn {
+    generation: u64,
+    text: String,
+    language: Option<String>,
+    fragment_count: usize,
+}
+
+struct FinalUtteranceFragment {
+    text: String,
+    language: Option<String>,
+}
+
 #[derive(Default)]
 struct FrameOutcome {
     opening: Option<String>,
-    final_utterance_sequence: Option<u64>,
+    final_fragment: Option<FinalUtteranceFragment>,
+    prompt_activity: bool,
 }
 
 pub async fn run(config: Config) -> Result<()> {
@@ -344,8 +357,12 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     let (mut ws_sender, mut ws_receiver) = socket.split();
     let mut commands = state.commands.subscribe();
     let (acknowledgement_due_tx, mut acknowledgement_due_rx) = mpsc::unbounded_channel();
+    let (turn_due_tx, mut turn_due_rx) = mpsc::unbounded_channel();
     let mut sequence = 0_u64;
     let mut pending_turn: Option<PendingTurn> = None;
+    let mut pending_incoming_turn: Option<PendingIncomingTurn> = None;
+    let mut incoming_generation = 0_u64;
+    let mut acknowledgements_suppressed_for_session = false;
     let timeout = tokio::time::sleep(Duration::from_secs(state.config.relay.max_call_seconds));
     tokio::pin!(timeout);
     let mut end_reason = "remote_closed".to_owned();
@@ -363,7 +380,33 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
             }
             command = commands.recv() => {
                 match command {
-                    Ok(AgentCommand::Speak { text, last }) => {
+                    Ok(AgentCommand::Speak {
+                        text,
+                        last,
+                        responding_to_sequence,
+                    }) => {
+                        if let Some(target) = responding_to_sequence {
+                            let active = pending_turn.as_ref().map(|turn| turn.sequence);
+                            if pending_incoming_turn.is_some() || active != Some(target) {
+                                state.sink.send(AgentEvent::Error {
+                                    code: "stale_response".to_owned(),
+                                    message: if pending_incoming_turn.is_some() {
+                                        format!(
+                                            "response targets utterance {target} while a newer caller turn is still being buffered"
+                                        )
+                                    } else { match active {
+                                        Some(active) => format!(
+                                            "response targets utterance {target} but active utterance is {active}"
+                                        ),
+                                        None => format!(
+                                            "response targets utterance {target} but no unanswered utterance is active"
+                                        ),
+                                    }},
+                                    retryable: true,
+                                });
+                                continue;
+                            }
+                        }
                         let response = pending_turn.take();
                         let frame = telnyx_text_frame(text.clone(), last);
                         if ws_sender.send(Message::Text(frame.to_string().into())).await.is_err() {
@@ -430,25 +473,39 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                                 acknowledgement_preceded: false,
                             });
                         }
-                        if let Some(final_sequence) = outcome.final_utterance_sequence {
-                            let acknowledgement_sent = pending_turn
-                                .as_ref()
-                                .is_some_and(|turn| turn.acknowledgement_sent);
-                            pending_turn = Some(PendingTurn {
-                                sequence: final_sequence,
-                                received_at: Instant::now(),
-                                acknowledgement_sent,
-                            });
-                            if state.config.acknowledgement.enabled && !acknowledgement_sent {
-                                let sender = acknowledgement_due_tx.clone();
-                                let delay = Duration::from_millis(
-                                    state.config.acknowledgement.delay_ms,
-                                );
-                                tokio::spawn(async move {
-                                    tokio::time::sleep(delay).await;
-                                    let _ = sender.send(final_sequence);
-                                });
+                        if let Some(fragment) = outcome.final_fragment {
+                            incoming_generation = incoming_generation.saturating_add(1);
+                            match pending_incoming_turn.as_mut() {
+                                Some(turn) => {
+                                    turn.generation = incoming_generation;
+                                    turn.text = merge_transcript_fragments(&turn.text, &fragment.text);
+                                    turn.language = fragment.language.or_else(|| turn.language.clone());
+                                    turn.fragment_count = turn.fragment_count.saturating_add(1);
+                                }
+                                None => {
+                                    pending_incoming_turn = Some(PendingIncomingTurn {
+                                        generation: incoming_generation,
+                                        text: fragment.text,
+                                        language: fragment.language,
+                                        fragment_count: 1,
+                                    });
+                                }
                             }
+                            schedule_turn_flush(
+                                turn_due_tx.clone(),
+                                incoming_generation,
+                                state.config.relay.continuation_window_ms,
+                            );
+                        } else if outcome.prompt_activity
+                            && let Some(turn) = pending_incoming_turn.as_mut()
+                        {
+                            incoming_generation = incoming_generation.saturating_add(1);
+                            turn.generation = incoming_generation;
+                            schedule_turn_flush(
+                                turn_due_tx.clone(),
+                                incoming_generation,
+                                state.config.relay.continuation_window_ms,
+                            );
                         }
                     }
                     Some(Ok(Message::Close(_))) | None => break,
@@ -468,6 +525,55 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                         });
                         break;
                     }
+                }
+            }
+            due = turn_due_rx.recv() => {
+                let Some(due_generation) = due else {
+                    continue;
+                };
+                let Some(buffered) = pending_incoming_turn.as_ref() else {
+                    continue;
+                };
+                if buffered.generation != due_generation {
+                    continue;
+                }
+                let buffered = pending_incoming_turn.take().expect("buffer checked above");
+                sequence = sequence.saturating_add(1);
+                let final_sequence = sequence;
+                state.sink.send(AgentEvent::Utterance {
+                    session_id: session_id.clone(),
+                    sequence: final_sequence,
+                    text: buffered.text.clone(),
+                    language: buffered.language,
+                    final_utterance: true,
+                    fragment_count: buffered.fragment_count,
+                });
+
+                let acknowledgement_sent = pending_turn
+                    .as_ref()
+                    .is_some_and(|turn| turn.acknowledgement_sent);
+                if matches_suppression_phrases(
+                    &buffered.text,
+                    &state.config.acknowledgement.suppress_for_session_phrases,
+                ) {
+                    acknowledgements_suppressed_for_session = true;
+                }
+                pending_turn = Some(PendingTurn {
+                    sequence: final_sequence,
+                    received_at: Instant::now(),
+                    acknowledgement_sent,
+                });
+                if state.config.acknowledgement.enabled
+                    && !acknowledgement_sent
+                    && !acknowledgements_suppressed_for_session
+                    && should_acknowledge(&state.config, &buffered.text)
+                {
+                    let sender = acknowledgement_due_tx.clone();
+                    let delay = Duration::from_millis(state.config.acknowledgement.delay_ms);
+                    tokio::spawn(async move {
+                        tokio::time::sleep(delay).await;
+                        let _ = sender.send(final_sequence);
+                    });
                 }
             }
             due = acknowledgement_due_rx.recv() => {
@@ -560,19 +666,26 @@ fn handle_telnyx_text(
     let mut outcome = FrameOutcome::default();
     match frame.kind.as_str() {
         "prompt" => {
+            outcome.prompt_activity = true;
             let final_utterance = frame.last.unwrap_or(false);
-            if final_utterance || state.config.relay.emit_partial_transcripts {
+            let text = frame.voice_prompt.unwrap_or_default();
+            if final_utterance {
+                if !text.trim().is_empty() {
+                    outcome.final_fragment = Some(FinalUtteranceFragment {
+                        text,
+                        language: frame.lang,
+                    });
+                }
+            } else if state.config.relay.emit_partial_transcripts {
                 *sequence += 1;
                 state.sink.send(AgentEvent::Utterance {
                     session_id: session_id.to_owned(),
                     sequence: *sequence,
-                    text: frame.voice_prompt.unwrap_or_default(),
+                    text,
                     language: frame.lang,
-                    final_utterance,
+                    final_utterance: false,
+                    fragment_count: 1,
                 });
-                if final_utterance {
-                    outcome.final_utterance_sequence = Some(*sequence);
-                }
             }
         }
         "interrupt" => state.sink.send(AgentEvent::Interrupted {
@@ -616,6 +729,75 @@ fn handle_telnyx_text(
         }),
     }
     outcome
+}
+
+fn schedule_turn_flush(sender: mpsc::UnboundedSender<u64>, generation: u64, delay_ms: u64) {
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+        let _ = sender.send(generation);
+    });
+}
+
+fn merge_transcript_fragments(current: &str, next: &str) -> String {
+    let current = current.trim();
+    let next = next.trim();
+    if current.is_empty() {
+        return next.to_owned();
+    }
+    if next.is_empty() {
+        return current.to_owned();
+    }
+
+    let current_lower = current.to_lowercase();
+    let next_lower = next.to_lowercase();
+    if next_lower.starts_with(&current_lower) {
+        return next.to_owned();
+    }
+    if current_lower.ends_with(&next_lower) {
+        return current.to_owned();
+    }
+
+    format!("{current} {next}")
+}
+
+fn should_acknowledge(config: &Config, text: &str) -> bool {
+    !matches_suppression_phrases(text, &config.acknowledgement.suppress_phrases)
+}
+
+fn matches_suppression_phrases(text: &str, phrases: &[String]) -> bool {
+    let normalized = normalize_phrase(text);
+    if normalized.is_empty() {
+        return false;
+    }
+    let word_count = normalized.split_whitespace().count();
+    phrases.iter().any(|phrase| {
+        let phrase = normalize_phrase(phrase);
+        if phrase.is_empty() {
+            return false;
+        }
+        let phrase_words = phrase.split_whitespace().count();
+        normalized == phrase
+            || (phrase_words >= 4 && normalized.contains(&phrase))
+            || (word_count <= phrase_words.saturating_add(1)
+                && (normalized.starts_with(&format!("{phrase} "))
+                    || normalized.ends_with(&format!(" {phrase}"))))
+    })
+}
+
+fn normalize_phrase(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_alphanumeric() {
+                character.to_ascii_lowercase()
+            } else {
+                ' '
+            }
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn elapsed_millis(duration: Duration) -> u64 {
@@ -669,8 +851,8 @@ async fn request_call_hangup(state: &AppState) {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn final_prompt_becomes_utterance() {
+    #[test]
+    fn final_prompt_becomes_bufferable_fragment() {
         let (sink, _writer) = crate::output::channel();
         let (commands, _) = broadcast::channel(4);
         let state = AppState {
@@ -683,26 +865,48 @@ mod tests {
             pending_opening: Arc::new(StdMutex::new(None)),
         };
         let mut sequence = 0;
-        handle_telnyx_text(
+        let outcome = handle_telnyx_text(
             &state,
             "session-1",
             &mut sequence,
             r#"{"type":"prompt","voicePrompt":"hello","lang":"en","last":true}"#,
         );
-        let Some(NextEvent::Event(event)) = sink.next_after(0, Duration::from_millis(10)).await
-        else {
-            panic!("expected utterance event");
-        };
+        let fragment = outcome.final_fragment.expect("expected final fragment");
+        assert_eq!(fragment.text, "hello");
+        assert_eq!(fragment.language.as_deref(), Some("en"));
+        assert!(outcome.prompt_activity);
+        assert_eq!(sequence, 0);
+    }
+
+    #[test]
+    fn transcript_fragments_merge_without_repeating_cumulative_text() {
         assert_eq!(
-            event.event,
-            AgentEvent::Utterance {
-                session_id: "session-1".to_owned(),
-                sequence: 1,
-                text: "hello".to_owned(),
-                language: Some("en".to_owned()),
-                final_utterance: true,
-            }
+            merge_transcript_fragments("please check", "the monitor"),
+            "please check the monitor"
         );
+        assert_eq!(
+            merge_transcript_fragments("please check", "please check the monitor"),
+            "please check the monitor"
+        );
+        assert_eq!(
+            merge_transcript_fragments("please check the monitor", "the monitor"),
+            "please check the monitor"
+        );
+    }
+
+    #[test]
+    fn acknowledgement_suppresses_social_and_session_wide_voicemail_phrases() {
+        let config = Config::default();
+        assert!(!should_acknowledge(&config, "Thank you, love."));
+        assert!(!should_acknowledge(&config, "Goodbye."));
+        assert!(matches_suppression_phrases(
+            "Your call has been forwarded to an automated voice messaging system.",
+            &config.acknowledgement.suppress_for_session_phrases,
+        ));
+        assert!(should_acknowledge(
+            &config,
+            "Please check the live monitor."
+        ));
     }
 
     #[tokio::test]

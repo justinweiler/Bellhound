@@ -2,6 +2,8 @@
 
 Cora is Bellhound's first autonomous-session pilot. Justin explicitly identified Bellhound as an appropriate way for Cora's always-on dot session to reach him when her existing autonomy supports an alert or she needs synchronous help.
 
+Route each call through an existing session that already has the relevant context, tools, and local Bellhound access. Do not create a generic call-only proxy. The selected session remains the reasoning agent for the full call and identifies itself honestly; Cora may supervise the routing without impersonating that session.
+
 ## Good reasons to call
 
 - A time-sensitive condition merits interruption and Cora has standing authority to alert Justin.
