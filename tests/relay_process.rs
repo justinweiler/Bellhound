@@ -39,6 +39,12 @@ emit_partial_transcripts = false
 
 [protocol]
 max_speak_chars = 2000
+
+[acknowledgement]
+enabled = true
+delay_ms = 1000
+mode = "speech"
+text = "Got it. Give me a moment."
 "#
         ),
     )
@@ -78,7 +84,9 @@ max_speak_chars = 2000
     let outbound: Value = serde_json::from_str(outbound.as_str()).unwrap();
     assert_eq!(outbound["type"], "text");
     assert_eq!(outbound["token"], "Bellhound opening.");
-    assert_eq!(read_event(&mut stdout)["event"], "spoken");
+    let opening_spoken = read_event(&mut stdout);
+    assert_eq!(opening_spoken["event"], "spoken");
+    assert_eq!(opening_spoken["responding_to_sequence"], Value::Null);
 
     let waiter = Command::new(env!("CARGO_BIN_EXE_bellhound"))
         .args([
@@ -133,12 +141,85 @@ max_speak_chars = 2000
     let outbound: Value = serde_json::from_str(outbound.as_str()).unwrap();
     assert_eq!(outbound["type"], "text");
     assert_eq!(outbound["token"], "Yes. The relay is healthy.");
-    assert_eq!(read_event(&mut stdout)["event"], "spoken");
+    let spoken = read_event(&mut stdout);
+    assert_eq!(spoken["event"], "spoken");
+    assert_eq!(spoken["responding_to_sequence"], 1);
+    assert_eq!(spoken["acknowledgement_preceded"], Value::Null);
+
+    let spoken_event_id = spoken["event_id"].as_u64().unwrap().to_string();
+    let no_acknowledgement = Command::new(env!("CARGO_BIN_EXE_bellhound"))
+        .args([
+            "--config",
+            config_path.to_str().unwrap(),
+            "wait",
+            "--after",
+            &spoken_event_id,
+            "--timeout-seconds",
+            "2",
+        ])
+        .env("BELLHOUND_RELAY_TOKEN", token)
+        .output()
+        .unwrap();
+    assert!(no_acknowledgement.status.success());
+    let no_acknowledgement: Value = serde_json::from_slice(&no_acknowledgement.stdout).unwrap();
+    assert_eq!(no_acknowledgement["event"], "wait_timeout");
+
+    websocket
+        .send(Message::Text(
+            r#"{"type":"prompt","voicePrompt":"Please check one more thing.","lang":"en","last":true}"#
+                .into(),
+        ))
+        .unwrap();
+    let second_utterance = read_event(&mut stdout);
+    assert_eq!(second_utterance["event"], "utterance");
+    assert_eq!(second_utterance["sequence"], 2);
+
+    let outbound = websocket.read().unwrap();
+    let Message::Text(outbound) = outbound else {
+        panic!("expected an acknowledgement frame");
+    };
+    let outbound: Value = serde_json::from_str(outbound.as_str()).unwrap();
+    assert_eq!(outbound["type"], "text");
+    assert_eq!(outbound["token"], "Got it. Give me a moment.");
+    let acknowledged = read_event(&mut stdout);
+    assert_eq!(acknowledged["event"], "acknowledged");
+    assert_eq!(acknowledged["responding_to_sequence"], 2);
+    assert_eq!(acknowledged["mode"], "speech");
+    assert_eq!(acknowledged["text"], "Got it. Give me a moment.");
+    assert!(acknowledged["response_latency_ms"].as_u64().unwrap() >= 900);
+
+    let spoke = Command::new(env!("CARGO_BIN_EXE_bellhound"))
+        .args([
+            "--config",
+            config_path.to_str().unwrap(),
+            "speak",
+            "The second check passed too.",
+        ])
+        .env("BELLHOUND_RELAY_TOKEN", token)
+        .output()
+        .unwrap();
+    assert!(spoke.status.success());
+    let outbound = websocket.read().unwrap();
+    let Message::Text(outbound) = outbound else {
+        panic!("expected the agent reply frame");
+    };
+    let outbound: Value = serde_json::from_str(outbound.as_str()).unwrap();
+    assert_eq!(outbound["token"], "The second check passed too.");
+    let spoken = read_event(&mut stdout);
+    assert_eq!(spoken["event"], "spoken");
+    assert_eq!(spoken["responding_to_sequence"], 2);
+    assert_eq!(spoken["acknowledgement_preceded"], true);
+    assert!(spoken["response_latency_ms"].as_u64().unwrap() >= 900);
 
     websocket.close(None).unwrap();
     let ended = read_event(&mut stdout);
     assert_eq!(ended["event"], "ended");
     assert_eq!(ended["reason"], "remote_closed");
+
+    assert_thinking_sound_is_served(port, token);
+    let fetched = read_event(&mut stdout);
+    assert_eq!(fetched["event"], "acknowledgement_audio_fetched");
+    assert!(fetched["bytes"].as_u64().unwrap() > 10_000);
 
     child.kill().unwrap();
     child.wait().unwrap();
@@ -157,6 +238,30 @@ fn prepare_opening(port: u16, token: &str, text: &str) {
     let mut response = String::new();
     stream.read_to_string(&mut response).unwrap();
     assert!(response.starts_with("HTTP/1.1 202"), "{response}");
+}
+
+fn assert_thinking_sound_is_served(port: u16, token: &str) {
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    write!(
+        stream,
+        "GET /conversation-relay/{token}/thinking.mp3 HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
+    )
+    .unwrap();
+    stream.flush().unwrap();
+    let mut response = Vec::new();
+    stream.read_to_end(&mut response).unwrap();
+    let header_end = response
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .unwrap();
+    let headers = String::from_utf8_lossy(&response[..header_end]);
+    assert!(headers.starts_with("HTTP/1.1 200"), "{headers}");
+    assert!(
+        headers
+            .to_ascii_lowercase()
+            .contains("content-type: audio/mpeg")
+    );
+    assert!(response[header_end + 4..].starts_with(b"ID3"));
 }
 
 fn read_event(reader: &mut impl BufRead) -> Value {

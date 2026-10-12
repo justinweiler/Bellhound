@@ -6,26 +6,31 @@ use std::{
 use anyhow::{Context, Result};
 use axum::{
     Json, Router,
-    body::Bytes,
+    body::{Body, Bytes},
     extract::{
         Path, Query, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use tokio::sync::{Mutex, broadcast};
+use tokio::sync::{Mutex, broadcast, mpsc};
 use uuid::Uuid;
 
 use crate::{
-    config::Config,
+    config::{AcknowledgementMode, Config},
     output::{self, EventSink, NextEvent},
-    protocol::{AgentCommand, AgentEvent, TelnyxFrame, telnyx_end_frame, telnyx_text_frame},
+    protocol::{
+        AgentCommand, AgentEvent, TelnyxFrame, telnyx_end_frame, telnyx_play_frame,
+        telnyx_text_frame,
+    },
     telnyx,
 };
+
+const THINKING_SOUND: &[u8] = include_bytes!("../assets/bellhound-thinking.mp3");
 
 #[derive(Clone)]
 struct AppState {
@@ -41,6 +46,18 @@ struct AppState {
 struct PendingOpening {
     text: String,
     expires_at: Instant,
+}
+
+struct PendingTurn {
+    sequence: u64,
+    received_at: Instant,
+    acknowledgement_sent: bool,
+}
+
+#[derive(Default)]
+struct FrameOutcome {
+    opening: Option<String>,
+    final_utterance_sequence: Option<u64>,
 }
 
 pub async fn run(config: Config) -> Result<()> {
@@ -83,6 +100,10 @@ pub async fn run(config: Config) -> Result<()> {
     };
     let app = Router::new()
         .route(&config.route(), get(upgrade))
+        .route(
+            &config.acknowledgement_audio_route(),
+            get(acknowledgement_audio),
+        )
         .route(&config.webhook_route(), post(webhook))
         .with_state(state.clone());
     let control_app = Router::new()
@@ -279,6 +300,33 @@ async fn upgrade(
     ws.on_upgrade(move |socket| handle_socket(socket, state))
 }
 
+async fn acknowledgement_audio(
+    Path(token): Path<String>,
+    State(state): State<AppState>,
+) -> Response {
+    if token.as_bytes() != state.token.as_bytes() {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let session_id = state.active_session.lock().await.clone();
+    state.sink.send(AgentEvent::AcknowledgementAudioFetched {
+        session_id: session_id.clone(),
+        bytes: THINKING_SOUND.len(),
+    });
+    tracing::info!(
+        session_id = session_id.as_deref().unwrap_or("none"),
+        bytes = THINKING_SOUND.len(),
+        "thinking audio fetched"
+    );
+    (
+        [
+            (header::CONTENT_TYPE, "audio/mpeg"),
+            (header::CACHE_CONTROL, "private, max-age=86400"),
+        ],
+        Body::from(Bytes::from_static(THINKING_SOUND)),
+    )
+        .into_response()
+}
+
 async fn handle_socket(socket: WebSocket, state: AppState) {
     let session_id = Uuid::new_v4().to_string();
     {
@@ -295,13 +343,16 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
 
     let (mut ws_sender, mut ws_receiver) = socket.split();
     let mut commands = state.commands.subscribe();
+    let (acknowledgement_due_tx, mut acknowledgement_due_rx) = mpsc::unbounded_channel();
     let mut sequence = 0_u64;
+    let mut pending_turn: Option<PendingTurn> = None;
     let timeout = tokio::time::sleep(Duration::from_secs(state.config.relay.max_call_seconds));
     tokio::pin!(timeout);
     let mut end_reason = "remote_closed".to_owned();
 
     loop {
         tokio::select! {
+            biased;
             _ = &mut timeout => {
                 end_reason = "max_duration".to_owned();
                 let frame = telnyx_end_frame(end_reason.clone());
@@ -313,6 +364,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
             command = commands.recv() => {
                 match command {
                     Ok(AgentCommand::Speak { text, last }) => {
+                        let response = pending_turn.take();
                         let frame = telnyx_text_frame(text.clone(), last);
                         if ws_sender.send(Message::Text(frame.to_string().into())).await.is_err() {
                             end_reason = "send_failed".to_owned();
@@ -321,6 +373,12 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                         state.sink.send(AgentEvent::Spoken {
                             session_id: session_id.clone(),
                             text,
+                            responding_to_sequence: response.as_ref().map(|turn| turn.sequence),
+                            response_latency_ms: response.as_ref().map(|turn| {
+                                elapsed_millis(turn.received_at.elapsed())
+                            }),
+                            acknowledgement_preceded: response
+                                .is_some_and(|turn| turn.acknowledgement_sent),
                         });
                     }
                     Ok(AgentCommand::Hangup { reason }) => {
@@ -348,12 +406,13 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
             message = ws_receiver.next() => {
                 match message {
                     Some(Ok(Message::Text(text))) => {
-                        if let Some(opening) = handle_telnyx_text(
+                        let outcome = handle_telnyx_text(
                             &state,
                             &session_id,
                             &mut sequence,
                             text.as_str(),
-                        ) {
+                        );
+                        if let Some(opening) = outcome.opening {
                             let frame = telnyx_text_frame(opening.clone(), true);
                             if ws_sender
                                 .send(Message::Text(frame.to_string().into()))
@@ -366,7 +425,30 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                             state.sink.send(AgentEvent::Spoken {
                                 session_id: session_id.clone(),
                                 text: opening,
+                                responding_to_sequence: None,
+                                response_latency_ms: None,
+                                acknowledgement_preceded: false,
                             });
+                        }
+                        if let Some(final_sequence) = outcome.final_utterance_sequence {
+                            let acknowledgement_sent = pending_turn
+                                .as_ref()
+                                .is_some_and(|turn| turn.acknowledgement_sent);
+                            pending_turn = Some(PendingTurn {
+                                sequence: final_sequence,
+                                received_at: Instant::now(),
+                                acknowledgement_sent,
+                            });
+                            if state.config.acknowledgement.enabled && !acknowledgement_sent {
+                                let sender = acknowledgement_due_tx.clone();
+                                let delay = Duration::from_millis(
+                                    state.config.acknowledgement.delay_ms,
+                                );
+                                tokio::spawn(async move {
+                                    tokio::time::sleep(delay).await;
+                                    let _ = sender.send(final_sequence);
+                                });
+                            }
                         }
                     }
                     Some(Ok(Message::Close(_))) | None => break,
@@ -387,6 +469,43 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                         break;
                     }
                 }
+            }
+            due = acknowledgement_due_rx.recv() => {
+                let Some(due_sequence) = due else {
+                    continue;
+                };
+                let Some(turn) = pending_turn.as_mut() else {
+                    continue;
+                };
+                if turn.sequence != due_sequence || turn.acknowledgement_sent {
+                    continue;
+                }
+                let text = state.config.acknowledgement.text.clone();
+                let (frame, mode, spoken_text) = match state.config.acknowledgement.mode {
+                    AcknowledgementMode::Sound => match acknowledgement_sound_url(&state) {
+                        Some(source) => (telnyx_play_frame(source), "sound", None),
+                        None => (
+                            telnyx_text_frame(text.clone(), true),
+                            "speech_fallback",
+                            Some(text.clone()),
+                        ),
+                    },
+                    AcknowledgementMode::Speech => {
+                        (telnyx_text_frame(text.clone(), true), "speech", Some(text.clone()))
+                    }
+                };
+                if ws_sender.send(Message::Text(frame.to_string().into())).await.is_err() {
+                    end_reason = "acknowledgement_send_failed".to_owned();
+                    break;
+                }
+                turn.acknowledgement_sent = true;
+                state.sink.send(AgentEvent::Acknowledged {
+                    session_id: session_id.clone(),
+                    responding_to_sequence: turn.sequence,
+                    mode: mode.to_owned(),
+                    text: spoken_text,
+                    response_latency_ms: elapsed_millis(turn.received_at.elapsed()),
+                });
             }
         }
     }
@@ -414,7 +533,7 @@ fn handle_telnyx_text(
     session_id: &str,
     sequence: &mut u64,
     source: &str,
-) -> Option<String> {
+) -> FrameOutcome {
     let value: serde_json::Value = match serde_json::from_str(source) {
         Ok(value) => value,
         Err(error) => {
@@ -423,7 +542,7 @@ fn handle_telnyx_text(
                 message: error.to_string(),
                 retryable: true,
             });
-            return None;
+            return FrameOutcome::default();
         }
     };
     let frame: TelnyxFrame = match serde_json::from_value(value.clone()) {
@@ -434,11 +553,11 @@ fn handle_telnyx_text(
                 message: error.to_string(),
                 retryable: true,
             });
-            return None;
+            return FrameOutcome::default();
         }
     };
 
-    let mut opening = None;
+    let mut outcome = FrameOutcome::default();
     match frame.kind.as_str() {
         "prompt" => {
             let final_utterance = frame.last.unwrap_or(false);
@@ -451,6 +570,9 @@ fn handle_telnyx_text(
                     language: frame.lang,
                     final_utterance,
                 });
+                if final_utterance {
+                    outcome.final_utterance_sequence = Some(*sequence);
+                }
             }
         }
         "interrupt" => state.sink.send(AgentEvent::Interrupted {
@@ -485,7 +607,7 @@ fn handle_telnyx_text(
                 && let Some(candidate) = pending.take()
                 && candidate.expires_at > Instant::now()
             {
-                opening = Some(candidate.text);
+                outcome.opening = Some(candidate.text);
             }
         }
         _ => state.sink.send(AgentEvent::Transport {
@@ -493,7 +615,31 @@ fn handle_telnyx_text(
             kind: frame.kind,
         }),
     }
-    opening
+    outcome
+}
+
+fn elapsed_millis(duration: Duration) -> u64 {
+    duration.as_millis().min(u128::from(u64::MAX)) as u64
+}
+
+fn acknowledgement_sound_url(state: &AppState) -> Option<String> {
+    if let Some(sound_url) = &state.config.acknowledgement.sound_url {
+        return Some(sound_url.clone());
+    }
+    let base = state
+        .config
+        .telnyx
+        .as_ref()?
+        .public_wss_base
+        .trim_end_matches('/');
+    let base = base
+        .strip_prefix("wss://")
+        .map(|rest| format!("https://{rest}"))
+        .or_else(|| {
+            base.strip_prefix("ws://")
+                .map(|rest| format!("http://{rest}"))
+        })?;
+    Some(format!("{}/{}/thinking.mp3", base, state.token))
 }
 
 async fn request_call_hangup(state: &AppState) {

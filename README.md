@@ -10,13 +10,13 @@ Bellhound is a small, line-oriented telephone bridge for interactive agents. The
 agent <-> JSON Lines or blocking CLI <-> Bellhound <-> Telnyx Conversation Relay <-> telephone
 ```
 
-Bellhound contains no language model and makes no decisions. It translates final speech-to-text frames into deterministic terminal events and translates agent `speak` commands into Telnyx text-to-speech frames.
+Bellhound contains no language model and makes no decisions. It translates final speech-to-text frames into deterministic terminal events and translates agent `speak` commands into Telnyx text-to-speech frames. While an agent is thinking, Bellhound can speak a fixed holding phrase or play a short built-in cue so the caller does not hear unexplained silence.
 
 See [Architecture](docs/architecture.md) for the ownership and trust model, [Protocol](docs/protocol.md) for model-neutral integration, and [Live setup](docs/live-setup.md) for the Telnyx/tunnel sequence.
 
 ## Status
 
-Version `0.2.0` provides:
+Version `0.3.0` provides:
 
 - a strict JSON Lines agent protocol;
 - blocking `wait`, `speak`, and `hangup` CLI commands for any tool-using model;
@@ -28,6 +28,7 @@ Version `0.2.0` provides:
 - outbound Dial with embedded Conversation Relay configuration;
 - Telnyx Call Control hangup for the telephone leg;
 - environment or operating-system credential-store API-key resolution.
+- a default-on thinking acknowledgement with cancellation, optional audio cue, and per-turn latency telemetry.
 
 Live use requires a dedicated Telnyx Call Control application and a durable WSS tunnel or host.
 
@@ -93,7 +94,16 @@ emit_partial_transcripts = false
 
 [protocol]
 max_speak_chars = 2000
+
+[acknowledgement]
+enabled = true
+delay_ms = 500
+mode = "speech"
+sound_url = "https://raw.githubusercontent.com/justinweiler/Bellhound-Sounds/master/bellhound-thinking.mp3"
+text = "Got it. Give me a moment."
 ```
+
+The acknowledgement is deterministic transport behavior, never model output. The default `speech` mode uses the fixed phrase. `sound` mode sends Telnyx a preemptible, interruptible `play` frame and defaults to Bellhound's public [thinking cue](https://github.com/justinweiler/Bellhound-Sounds). Change `sound_url` to use another public HTTPS asset; when the field is omitted, Bellhound serves its embedded MP3 through the authenticated relay URL. Sound mode falls back to `text` only when Bellhound cannot form either media URL. Set `enabled = false` for an adapter that consistently responds fast enough to make a cue unnecessary. Bellhound cancels its timer when the agent answers within the grace period.
 
 The relay token never belongs in the TOML file. Supply an unguessable value of at least 24 characters through the configured environment variable.
 
@@ -132,8 +142,8 @@ The agent sends commands on stdin:
 {"command":"hangup","reason":"conversation_complete"}
 ```
 
-Other events include `ready`, `connected`, `interrupted`, `dtmf`, `spoken`, `pong`, `ended`, `transport`, and `error`.
-Every event carries `emitted_at_unix_ms` so a caller can distinguish relay timing from agent and TTS delays.
+Other events include `ready`, `connected`, `interrupted`, `dtmf`, `acknowledged`, `acknowledgement_audio_fetched`, `spoken`, `pong`, `ended`, `transport`, and `error`.
+Every event carries `emitted_at_unix_ms`. Acknowledgements identify their `sound`, `speech`, or `speech_fallback` mode, the utterance sequence, and dispatch latency. Agent `spoken` events include the same sequence, total response latency, and whether an acknowledgement preceded the answer.
 
 Models that cannot hold a PTY can use the blocking CLI adapter. `wait` returns immediately for a retained event or sleeps until the next event arrives:
 

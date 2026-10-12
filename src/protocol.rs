@@ -43,6 +43,24 @@ pub enum AgentEvent {
     Spoken {
         session_id: String,
         text: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        responding_to_sequence: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        response_latency_ms: Option<u64>,
+        #[serde(default, skip_serializing_if = "is_false")]
+        acknowledgement_preceded: bool,
+    },
+    Acknowledged {
+        session_id: String,
+        responding_to_sequence: u64,
+        mode: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        text: Option<String>,
+        response_latency_ms: u64,
+    },
+    AcknowledgementAudioFetched {
+        session_id: Option<String>,
+        bytes: usize,
     },
     Pong,
     Ended {
@@ -110,8 +128,22 @@ pub fn telnyx_end_frame(reason: String) -> Value {
     })
 }
 
+pub fn telnyx_play_frame(source: String) -> Value {
+    serde_json::json!({
+        "type": "play",
+        "source": source,
+        "loop": 1,
+        "interruptible": true,
+        "preemptible": true,
+    })
+}
+
 fn default_true() -> bool {
     true
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[cfg(test)]
@@ -162,5 +194,14 @@ mod tests {
                 "handoffData":"{\"reason\":\"conversation_complete\"}"
             })
         );
+    }
+
+    #[test]
+    fn renders_interruptible_preemptible_audio_frame() {
+        let frame = telnyx_play_frame("https://example.test/thinking.mp3".to_owned());
+        assert_eq!(frame["type"], "play");
+        assert_eq!(frame["loop"], 1);
+        assert_eq!(frame["interruptible"], true);
+        assert_eq!(frame["preemptible"], true);
     }
 }

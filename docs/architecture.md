@@ -27,13 +27,13 @@ The originating agent launches Bellhound from its existing task. It can keep the
 ## State machine
 
 ```text
-ready -> opening queued -> dialing -> setup -> opening spoken -> utterance/speak loop -> ended
+ready -> opening queued -> dialing -> setup -> opening spoken -> utterance -> acknowledgement/speak loop -> ended
                                             |                         |
                                             +------ interrupt --------+
 ```
 
 Bellhound permits one active WebSocket call. Every final utterance receives a monotonically increasing sequence number. Calls stop at the configured maximum duration even when the model or caller forgets to hang up.
-Every event includes a process-local event ID and an emission timestamp in Unix milliseconds for latency tracing across STT arrival, agent response, and TTS dispatch. The private control listener keeps 256 recent events so a model can resume from its last event ID without polling or losing a turn.
+Every event includes a process-local event ID and an emission timestamp in Unix milliseconds for latency tracing across STT arrival, agent response, and TTS dispatch. An enabled acknowledgement timer starts at each final utterance. An agent reply cancels a timer that has not fired. When it fires, Bellhound sends the configured fixed speech or a preemptible, interruptible Conversation Relay audio cue, emits `acknowledged`, and keeps the turn open until the agent replies. Sound mode prefers the configured public URL and can fall back to an authenticated embedded asset. The subsequent `spoken` event records the utterance sequence, total response latency, and whether a cue preceded it. The private control listener keeps 256 recent events so a model can resume from its last event ID without polling or losing a turn.
 
 The real introduction is not delegated to Telnyx's opaque pre-setup greeting path. `dial` queues it locally, Conversation Relay connects with a short audible “Bellhound” primer to complete and warm that path, and Bellhound sends the call-specific opening immediately after `setup`. The resulting `spoken` event makes opening dispatch observable.
 

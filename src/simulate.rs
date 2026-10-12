@@ -57,6 +57,9 @@ pub async fn run(config: Config, script: PathBuf) -> Result<()> {
                 sink.send(AgentEvent::Spoken {
                     session_id: session_id.clone(),
                     text,
+                    responding_to_sequence: Some(sequence),
+                    response_latency_ms: None,
+                    acknowledgement_preceded: false,
                 });
                 match prompts.next() {
                     Some(prompt) => {

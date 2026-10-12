@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0 - 2026-10-11
+
+- Add a default-on deterministic spoken acknowledgement after final caller speech, plus an optional built-in audio thinking cue for durable public hosts.
+- Cancel the acknowledgement when the originating agent replies during the grace period.
+- Emit acknowledgement and agent-response latency tied to the caller utterance sequence.
+- Emit secret-safe evidence when Telnyx fetches the embedded audio asset.
+- Add a configurable public `sound_url` with Bellhound's public GitHub-hosted cue as the default.
+- Keep the originating session as the only reasoning agent; the cue is fixed transport behavior.
+
 ## 0.2.0 - 2026-10-10
 
 - Add a separate loopback-only control listener.

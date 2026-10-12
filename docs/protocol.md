@@ -16,7 +16,21 @@ Every event is one JSON object with these common fields:
 
 `event_id` increases for the lifetime of one relay process. `emitted_at_unix_ms` records when Bellhound emitted the event. Event-specific fields share the same object.
 
-The current event names are `ready`, `connected`, `setup`, `utterance`, `interrupted`, `dtmf`, `spoken`, `pong`, `ended`, `transport`, `call_status`, and `error`.
+The current event names are `ready`, `connected`, `setup`, `utterance`, `interrupted`, `dtmf`, `acknowledged`, `acknowledgement_audio_fetched`, `spoken`, `pong`, `ended`, `transport`, `call_status`, and `error`.
+
+With acknowledgements enabled, Bellhound starts a configurable grace timer after a final utterance. A `speak` command received during that grace period cancels it. In the default speech mode Bellhound sends the fixed phrase and emits:
+
+```json
+{"event":"acknowledged","responding_to_sequence":4,"mode":"speech","text":"Got it. Give me a moment.","response_latency_ms":501}
+```
+
+The eventual agent reply remains a normal `spoken` event with additive timing fields:
+
+```json
+{"event":"spoken","text":"I checked it. The deployment is healthy.","responding_to_sequence":4,"response_latency_ms":16220,"acknowledgement_preceded":true}
+```
+
+Sound mode uses a configured public `sound_url` or Bellhound's authenticated embedded-audio URL. Conversation Relay receives a `play` frame that is both interruptible by the caller and preemptible by the agent response. A fetch of the embedded asset emits `acknowledgement_audio_fetched`, allowing operators to distinguish dispatch from media retrieval without logging the secret URL. `speech` mode and the `speech_fallback` path include the configured `text` field in the event. The acknowledgement is deterministic transport behavior. It does not reason, answer the caller, or replace the originating agent.
 
 ## Commands
 

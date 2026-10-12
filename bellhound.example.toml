@@ -17,6 +17,13 @@ emit_partial_transcripts = false
 [protocol]
 max_speak_chars = 2000
 
+[acknowledgement]
+enabled = true
+delay_ms = 500
+mode = "speech"
+sound_url = "https://raw.githubusercontent.com/justinweiler/Bellhound-Sounds/master/bellhound-thinking.mp3"
+text = "Got it. Give me a moment."
+
 # Add this section in your ignored local file when the Call Control application exists.
 # [telnyx]
 # connection_id = "your-call-control-application-id"

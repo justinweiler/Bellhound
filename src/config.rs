@@ -3,12 +3,16 @@ use std::{fs, net::SocketAddr, path::Path};
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
+const DEFAULT_ACKNOWLEDGEMENT_SOUND_URL: &str =
+    "https://raw.githubusercontent.com/justinweiler/Bellhound-Sounds/master/bellhound-thinking.mp3";
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub credentials: CredentialConfig,
     pub relay: RelayConfig,
     pub protocol: ProtocolConfig,
+    pub acknowledgement: AcknowledgementConfig,
     pub telnyx: Option<TelnyxConfig>,
 }
 
@@ -47,6 +51,29 @@ pub struct RelayConfig {
 pub struct ProtocolConfig {
     /// Maximum text accepted in one `speak` command.
     pub max_speak_chars: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct AcknowledgementConfig {
+    /// Speak a deterministic holding phrase when an agent response is not immediate.
+    pub enabled: bool,
+    /// Time to wait after a final utterance before speaking the holding phrase.
+    pub delay_ms: u64,
+    /// Prefer the built-in sound cue or speak the configured text.
+    pub mode: AcknowledgementMode,
+    /// Optional public HTTPS media URL used by sound mode instead of the embedded endpoint.
+    pub sound_url: Option<String>,
+    /// Text spoken by Bellhound. This is transport behavior, not model output.
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum AcknowledgementMode {
+    Sound,
+    #[default]
+    Speech,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -99,6 +126,18 @@ impl Default for ProtocolConfig {
     }
 }
 
+impl Default for AcknowledgementConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            delay_ms: 500,
+            mode: AcknowledgementMode::Speech,
+            sound_url: Some(DEFAULT_ACKNOWLEDGEMENT_SOUND_URL.to_owned()),
+            text: "Got it. Give me a moment.".to_owned(),
+        }
+    }
+}
+
 impl Config {
     pub fn load(path: &Path) -> Result<Self> {
         let source = fs::read_to_string(path)
@@ -140,6 +179,20 @@ impl Config {
         }
         if self.protocol.max_speak_chars == 0 {
             bail!("protocol.max_speak_chars must be greater than zero");
+        }
+        if self.acknowledgement.enabled && self.acknowledgement.text.trim().is_empty() {
+            bail!("acknowledgement.text must not be empty when acknowledgements are enabled");
+        }
+        if self.acknowledgement.text.chars().count() > self.protocol.max_speak_chars {
+            bail!("acknowledgement.text exceeds protocol.max_speak_chars");
+        }
+        if self.acknowledgement.delay_ms > 10_000 {
+            bail!("acknowledgement.delay_ms must not exceed 10000");
+        }
+        if let Some(sound_url) = &self.acknowledgement.sound_url
+            && !sound_url.starts_with("https://")
+        {
+            bail!("acknowledgement.sound_url must start with https://");
         }
         if let Some(telnyx) = &self.telnyx {
             if telnyx.connection_id.trim().is_empty() {
@@ -184,6 +237,10 @@ impl Config {
     pub fn webhook_route(&self) -> String {
         format!("{}/{{token}}", self.relay.webhook_path)
     }
+
+    pub fn acknowledgement_audio_route(&self) -> String {
+        format!("{}/{{token}}/thinking.mp3", self.relay.path)
+    }
 }
 
 fn looks_like_e164(value: &str) -> bool {
@@ -215,7 +272,40 @@ mod tests {
 
     #[test]
     fn defaults_are_valid() {
-        Config::default().validate().unwrap();
+        let config = Config::default();
+        config.validate().unwrap();
+        assert!(config.acknowledgement.enabled);
+        assert_eq!(config.acknowledgement.mode, AcknowledgementMode::Speech);
+        assert_eq!(
+            config.acknowledgement.sound_url.as_deref(),
+            Some(DEFAULT_ACKNOWLEDGEMENT_SOUND_URL)
+        );
+    }
+
+    #[test]
+    fn rejects_empty_enabled_acknowledgement() {
+        let mut config = Config::default();
+        config.acknowledgement.text.clear();
+        assert!(
+            config
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("acknowledgement.text")
+        );
+    }
+
+    #[test]
+    fn rejects_insecure_acknowledgement_sound_url() {
+        let mut config = Config::default();
+        config.acknowledgement.sound_url = Some("http://example.test/thinking.mp3".to_owned());
+        assert!(
+            config
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("sound_url")
+        );
     }
 
     #[test]

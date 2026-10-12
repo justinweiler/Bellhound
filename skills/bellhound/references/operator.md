@@ -65,6 +65,10 @@ BELLHOUND_RELAY_TOKEN=$(/usr/bin/security find-generic-password -s 'Bellhound re
   'I checked the live state. The deployment is healthy.'
 ```
 
+By default, Bellhound says the fixed phrase `Got it. Give me a moment.` when the reply does not arrive within 500 ms. Advance the cursor through its `acknowledged` event and continue the same agent turn. The eventual `spoken` event reports `response_latency_ms` and `acknowledgement_preceded`. The acknowledgement confirms that Bellhound heard the caller; it is not an answer from another model.
+
+The optional `sound` mode uses a short cue that is interruptible by the caller and preemptible by the agent reply. Bellhound defaults `sound_url` to the public `justinweiler/Bellhound-Sounds` asset and permits any other public HTTPS cue. Without a URL, Bellhound exposes its embedded cue through the relay host. Enable sound mode only after proving that Telnyx fetches the media URL. The accountless quick tunnel did not receive Telnyx's embedded media fetch during the October 11 pilot.
+
 ## Finish and clean up
 
 ```sh
