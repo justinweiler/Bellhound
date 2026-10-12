@@ -9,6 +9,7 @@
 - Warm the Telnyx greeting path with a short audible primer, then dispatch the queued call-specific opening as a measured speech frame after relay setup.
 - Add the Bellhound publication logo and an installable Codex skill with an on-demand session runtime for the Cora pilot.
 - Replace detached session startup with a bounded foreground supervisor after the first Cora pilot exposed execution-owner cleanup of both child processes.
+- Suppress redundant cleanup hangup commands after the relay has already emitted `ended`.
 - Document the model-neutral adapter contract and project authorship.
 
 ## 0.1.0 - 2026-10-09

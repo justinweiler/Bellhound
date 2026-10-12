@@ -62,8 +62,14 @@ log_owner() {
   printf '%s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*" >>"$owner_log"
 }
 
+call_is_active() {
+  [ -f "$relay_log" ] || return 1
+  lifecycle=$(grep -E '"event":"(connected|ended)"' "$relay_log" | tail -1 || true)
+  printf '%s' "$lifecycle" | grep -F '"event":"connected"' >/dev/null 2>&1
+}
+
 hangup_if_active() {
-  if [ -x "$binary" ] && [ -f "$runtime_config" ] && pid_is "$relay_pid_file" 'bellhound' && [ -n "${BELLHOUND_RELAY_TOKEN:-}" ]; then
+  if [ -x "$binary" ] && [ -f "$runtime_config" ] && pid_is "$relay_pid_file" 'bellhound' && [ -n "${BELLHOUND_RELAY_TOKEN:-}" ] && call_is_active; then
     env BELLHOUND_RELAY_TOKEN="$BELLHOUND_RELAY_TOKEN" \
       "$binary" --config "$runtime_config" hangup --reason session_cleanup >/dev/null 2>&1 || true
     sleep 0.5
