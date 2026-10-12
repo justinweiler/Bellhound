@@ -36,7 +36,7 @@ path = "/conversation-relay"
 token_env = "BELLHOUND_RELAY_TOKEN"
 max_call_seconds = 30
 emit_partial_transcripts = false
-continuation_window_ms = 120
+continuation_window_ms = 1000
 
 [protocol]
 max_speak_chars = 2000
@@ -172,13 +172,13 @@ text = "Got it. Give me a moment."
             r#"{"type":"prompt","voicePrompt":"Please check","lang":"en","last":true}"#.into(),
         ))
         .unwrap();
-    thread::sleep(Duration::from_millis(80));
+    thread::sleep(Duration::from_millis(600));
     websocket
         .send(Message::Text(
             r#"{"type":"prompt","voicePrompt":"one more","lang":"en","last":false}"#.into(),
         ))
         .unwrap();
-    thread::sleep(Duration::from_millis(80));
+    thread::sleep(Duration::from_millis(600));
     websocket
         .send(Message::Text(
             r#"{"type":"prompt","voicePrompt":"one more thing.","lang":"en","last":true}"#.into(),
