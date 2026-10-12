@@ -14,50 +14,74 @@ export BELLHOUND_RELAY_TOKEN=$(/usr/bin/security find-generic-password \
   -s 'Bellhound relay token' -a 'default' -w)
 ```
 
-## Start
+Separate execution-tool calls do not inherit shell exports. Resolve the token again inside every later tool call that invokes `bellhound`; never echo it.
 
-From the repository root:
+## Start with a foreground owner
+
+Launch the supervisor as a long-running execution tool call from the repository root:
 
 ```sh
-session_json=$(skills/bellhound/scripts/session.sh start)
-runtime_config=$(printf '%s' "$session_json" | jq -r '.config')
-cursor=$(printf '%s' "$session_json" | jq -r '.event_cursor')
+export BELLHOUND_RELAY_TOKEN=$(/usr/bin/security find-generic-password \
+  -s 'Bellhound relay token' -a 'default' -w)
+skills/bellhound/scripts/session.sh run
 ```
 
-`start` builds the release binary when necessary, launches the local relay, creates a temporary public WSS tunnel, writes an ignored mode-600 runtime config, and returns JSON. It does not place a call.
+The tool should yield a running-session identifier after printing one `ready` JSON object. Retain that identifier; do not terminate or abandon the owner while the call is active. The owner builds the release binary when necessary, launches the local relay and temporary WSS tunnel as children, writes an ignored mode-600 runtime config, and remains in the foreground. It applies a default seven-minute lifetime and cleans both children on signal, child failure, or timeout.
+
+Read `config` and `event_cursor` from the ready JSON. On Justin's installation the runtime config is `/Users/justinweiler/Bellhound/work/session/bellhound.toml`; use that literal path in later tool calls because shell variables do not persist between them. Before dialing, prove ownership across at least three separate tool turns:
+
+```sh
+skills/bellhound/scripts/session.sh status
+BELLHOUND_RELAY_TOKEN=$(/usr/bin/security find-generic-password -s 'Bellhound relay token' -a 'default' -w) \
+  target/release/bellhound --config work/session/bellhound.toml ping
+BELLHOUND_RELAY_TOKEN=$(/usr/bin/security find-generic-password -s 'Bellhound relay token' -a 'default' -w) \
+  target/release/bellhound --config work/session/bellhound.toml wait \
+  --after 1 --timeout-seconds 5
+```
+
+Status must report `owner_running`, `relay_running`, and `tunnel_running` as true. The final command must return `pong`. Repeat status once more in a later tool turn. This survival check is required after changing execution environments or ownership behavior.
 
 ## Dial and converse
 
 ```sh
-target/release/bellhound --config "$runtime_config" dial \
+BELLHOUND_RELAY_TOKEN=$(/usr/bin/security find-generic-password -s 'Bellhound relay token' -a 'default' -w) \
+  target/release/bellhound --config work/session/bellhound.toml dial \
   --opening 'Cora here. I found something that needs your judgment.'
 ```
 
-Wait for one event at a time:
+Wait for one event at a time. Replace the sample `5` with the last processed numeric event ID:
 
 ```sh
-target/release/bellhound --config "$runtime_config" wait \
-  --after "$cursor" --timeout-seconds 120
+BELLHOUND_RELAY_TOKEN=$(/usr/bin/security find-generic-password -s 'Bellhound relay token' -a 'default' -w) \
+  target/release/bellhound --config work/session/bellhound.toml wait \
+  --after 5 --timeout-seconds 120
 ```
 
 Set `cursor` to every returned `event_id`, including setup, spoken, interruption, and status events. On a final `utterance`, reason in the originating session, perform any ordinary authorized work, and answer:
 
 ```sh
-target/release/bellhound --config "$runtime_config" speak \
+BELLHOUND_RELAY_TOKEN=$(/usr/bin/security find-generic-password -s 'Bellhound relay token' -a 'default' -w) \
+  target/release/bellhound --config work/session/bellhound.toml speak \
   'I checked the live state. The deployment is healthy.'
 ```
 
 ## Finish and clean up
 
 ```sh
-target/release/bellhound --config "$runtime_config" hangup \
+BELLHOUND_RELAY_TOKEN=$(/usr/bin/security find-generic-password -s 'Bellhound relay token' -a 'default' -w) \
+  target/release/bellhound --config work/session/bellhound.toml hangup \
   --reason conversation_complete
-target/release/bellhound --config "$runtime_config" wait \
-  --after "$cursor" --timeout-seconds 10
+BELLHOUND_RELAY_TOKEN=$(/usr/bin/security find-generic-password -s 'Bellhound relay token' -a 'default' -w) \
+  target/release/bellhound --config work/session/bellhound.toml wait \
+  --after 5 --timeout-seconds 10
 skills/bellhound/scripts/session.sh stop
 ```
 
-Confirm the terminal event is `ended`. `stop` validates process identity before signaling the saved PIDs and removes only runtime PID files.
+Confirm the terminal event is `ended`. `stop` first requests telephone hangup while the relay is alive, signals the saved foreground owner, waits for its cleanup trap, validates child process identity before fallback signaling, and removes only runtime PID files. Poll the original owner execution session to completion, then require:
+
+```json
+{"owner_running":false,"relay_running":false,"tunnel_running":false,"config":null}
+```
 
 ## Failure handling
 
@@ -65,4 +89,4 @@ Confirm the terminal event is `ended`. `stop` validates process identity before 
 - `wait_timeout`: retain the cursor and decide whether to wait once more or end the attempt.
 - `event_history_gap`: surface the gap; do not pretend no turn was lost.
 - Dial failure: run `stop`; do not redial automatically.
-- Tunnel or relay startup failure: inspect the ignored mode-600 logs under `work/session/`, report a sanitized cause, then stop.
+- Tunnel, relay, or owner failure: inspect the ignored mode-600 logs under `work/session/`, report a sanitized cause, issue direct telephone cleanup if the relay is unavailable, then stop. Do not redial automatically.

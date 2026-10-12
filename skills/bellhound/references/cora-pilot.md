@@ -19,3 +19,7 @@ Use ordinary text notification when the matter is informational, can wait, or ca
 - End the call cleanly when the purpose is satisfied.
 
 Do not use a phone answer as identity proof for privileged actions. Do not infer consent from silence, voicemail, background speech, or a disconnected call. One unanswered attempt is enough unless Justin explicitly requested retries.
+
+## Repeat pilot gate
+
+The first Cora pilot exposed an execution-owner lifetime defect: a detached launcher returned, then both relay and temporary tunnel disappeared without terminal events while the telephone leg remained alive. Before the authorized repeat call, Cora must use the foreground `session.sh run` workflow and complete the multi-turn survival check in the operator reference. Iris owns the code repair; Cora owns the single repeat call after receiving Iris's verified handoff.

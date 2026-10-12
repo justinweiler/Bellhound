@@ -63,7 +63,7 @@ Bellhound ships with an installable Codex skill that keeps the reasoning agent i
 ln -s "$PWD/skills/bellhound" "${CODEX_HOME:-$HOME/.codex}/skills/bellhound"
 ```
 
-The skill includes an on-demand session helper that launches the local relay and a temporary public tunnel, writes an ignored runtime configuration, and tears both processes down after the call. See [the operator reference](skills/bellhound/references/operator.md) and [Cora pilot](skills/bellhound/references/cora-pilot.md).
+The skill includes an on-demand foreground supervisor that owns the local relay and temporary public tunnel for the entire call, writes an ignored runtime configuration, and tears both child processes down on explicit stop, signal, failure, or bounded timeout. See [the operator reference](skills/bellhound/references/operator.md) and [Cora pilot](skills/bellhound/references/cora-pilot.md).
 
 ## Configuration
 
