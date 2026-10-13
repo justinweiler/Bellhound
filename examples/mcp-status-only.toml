@@ -1,0 +1,28 @@
+# Safe profile for MCP discovery only. It has no Telnyx section and deliberately uses
+# separate loopback ports and unset credential names. Do not use it for a live call.
+
+[credentials]
+api_key_env = "BELLHOUND_MCP_STATUS_ONLY_TELNYX_KEY"
+keyring_service = "Bellhound MCP status-only (unused)"
+keyring_account = "disabled"
+
+[relay]
+bind = "127.0.0.1:18787"
+control_bind = "127.0.0.1:18788"
+path = "/conversation-relay"
+webhook_path = "/webhooks/telnyx"
+token_env = "BELLHOUND_MCP_STATUS_ONLY_RELAY_TOKEN"
+max_call_seconds = 30
+emit_partial_transcripts = false
+continuation_window_ms = 2500
+
+[protocol]
+max_speak_chars = 2000
+
+[acknowledgement]
+enabled = false
+delay_ms = 500
+mode = "speech"
+text = "Got it. Give me a moment."
+suppress_phrases = []
+suppress_for_session_phrases = []

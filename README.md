@@ -58,6 +58,8 @@ bellhound --config bellhound.toml mcp
 
 The process reads MCP JSON-RPC from stdin, writes MCP responses to stdout, and sends diagnostics to stderr. It does not bind another network listener. The intended private remote transport is OpenAI Secure MCP Tunnel through `tunnel-client`; connection and plugin setup are separate user-assisted steps and are not performed by the build.
 
+Use `examples/mcp-status-only.toml` for the first tool-discovery gate. It contains no Telnyx configuration and deliberately cannot operate the normal Bellhound runtime.
+
 ## Build
 
 ```sh

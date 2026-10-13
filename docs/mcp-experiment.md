@@ -77,12 +77,12 @@ This gate proves MCP transport and tool discovery without starting telephone inf
 
 1. Build the experimental branch in its isolated worktree. Leave the Bellhound relay and foreground telephone supervisor stopped.
 2. In OpenAI Platform tunnel settings, create or select a tunnel associated with the target Platform organization and ChatGPT workspace. This requires the applicable Tunnels permissions.
-3. Obtain the official `tunnel-client` through the Platform download or current official release. Configure a local stdio profile whose MCP command runs the experimental `bellhound --config <private-base-config> mcp` process. Supply only the tunnel runtime key through the local secret store or ephemeral environment; never put it in Git, TOML, chat, or command output.
+3. Obtain the official `tunnel-client` through the Platform download or current official release. Configure a local stdio profile whose MCP command runs the experimental `bellhound --config <worktree>/examples/mcp-status-only.toml mcp` process. This tracked profile has no Telnyx configuration, uses dedicated unused loopback ports, and names unset credentials. Supply only the tunnel runtime key through the local secret store or ephemeral environment; never put it in Git, TOML, chat, or command output.
 4. Run `tunnel-client doctor` and require healthy/ready status before connecting ChatGPT.
 5. In ChatGPT Plugins, add a custom MCP server, choose **Tunnel**, select the approved tunnel, configure the requested authentication, review the warning, and create it as a private test plugin.
 6. Refresh discovered metadata and inspect the five tools. In the actual durable agent conversation, call only `bellhound_status`. The expected result is `control_reachable=false`, which proves the hosted session reached the local MCP process while confirming that no telephone runtime is active.
 
-Gate 1 uses the outbound-only OpenAI Secure MCP Tunnel. It does **not** start Bellhound's relay, create a public Telnyx WSS tunnel, require the Bellhound relay token, or place a call.
+Gate 1 uses the outbound-only OpenAI Secure MCP Tunnel. It does **not** read the private Bellhound configuration, start Bellhound's relay, create a public Telnyx WSS tunnel, require the Bellhound relay token, or place a call. With the status-only profile, `dial`, `wait`, `speak`, and `hangup` fail closed before reaching Telnyx or a Bellhound control listener.
 
 ### Gate 2: explicitly approved live canary
 

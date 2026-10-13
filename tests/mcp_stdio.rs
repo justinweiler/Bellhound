@@ -248,6 +248,73 @@ fn mcp_stdio_exposes_cursor_safe_idempotent_tools() {
     relay.wait().unwrap();
 }
 
+#[test]
+fn mcp_status_only_profile_discovers_tools_and_fails_closed() {
+    let config_path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/mcp-status-only.toml");
+    let mut mcp = Command::new(env!("CARGO_BIN_EXE_bellhound"))
+        .args(["--config", config_path.to_str().unwrap(), "mcp"])
+        .env_remove("BELLHOUND_MCP_STATUS_ONLY_RELAY_TOKEN")
+        .env_remove("BELLHOUND_MCP_STATUS_ONLY_TELNYX_KEY")
+        .env("RUST_LOG", "error")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut stdin = mcp.stdin.take().unwrap();
+    let mut stdout = BufReader::new(mcp.stdout.take().unwrap());
+
+    request(
+        &mut stdin,
+        &mut stdout,
+        json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-11-25",
+                "capabilities": {},
+                "clientInfo": {"name": "status-only-test", "version": "1.0.0"}
+            }
+        }),
+    );
+    notify(
+        &mut stdin,
+        json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
+    );
+    let listed = request(
+        &mut stdin,
+        &mut stdout,
+        json!({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}),
+    );
+    assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 5);
+
+    let status = call_tool(&mut stdin, &mut stdout, 3, "bellhound_status", json!({}));
+    assert_eq!(status["control_reachable"], false);
+    assert_eq!(status["active_call"], Value::Null);
+
+    let dial = raw_call_tool(
+        &mut stdin,
+        &mut stdout,
+        4,
+        "bellhound_dial",
+        json!({
+            "request_id": Uuid::new_v4().to_string(),
+            "opening": "This discovery profile must never dial."
+        }),
+    );
+    assert_eq!(dial["result"]["isError"], true);
+    assert!(
+        dial["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("control listener is unavailable")
+    );
+
+    shutdown(&mut mcp, stdin);
+}
+
 fn available_port() -> u16 {
     TcpListener::bind("127.0.0.1:0")
         .unwrap()
