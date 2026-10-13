@@ -1,5 +1,5 @@
 #!/usr/bin/env swift
-// Local-only credential entry for the experimental Bellhound MCP canary.
+// Local-only credential entry for a bounded Bellhound MCP canary.
 // The value is written only to the parent process pipe. This helper never uses
 // clipboard APIs, command-line arguments, files, logs, or persistent storage.
 
@@ -35,7 +35,7 @@ application.setActivationPolicy(.accessory)
 
 let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 520, height: 104))
 let explanation = NSTextField(labelWithString:
-    "Paste the restricted one-day tunnel key. Use Show key to verify it before submission. The value is not saved."
+    "Paste the restricted tunnel runtime key. Use Show key to verify it before submission. The value is not saved."
 )
 explanation.frame = NSRect(x: 0, y: 72, width: 520, height: 32)
 explanation.maximumNumberOfLines = 2
@@ -59,7 +59,7 @@ accessory.addSubview(checkbox)
 
 let alert = NSAlert()
 alert.alertStyle = .informational
-alert.messageText = "Bellhound Gate 2 credential"
+alert.messageText = "Bellhound MCP canary credential"
 alert.informativeText = "This native dialog is local to your Mac. Browser and agent inspection must remain paused until it closes."
 alert.accessoryView = accessory
 alert.addButton(withTitle: "Use key")

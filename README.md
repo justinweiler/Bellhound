@@ -18,11 +18,11 @@ agent <-> JSON Lines, blocking CLI, or private MCP <-> Bellhound <-> Telnyx Conv
 
 Bellhound contains no language model and makes no decisions. It translates final speech-to-text frames into deterministic terminal events and translates agent `speak` commands into Telnyx text-to-speech frames. While an agent is thinking, Bellhound can speak a fixed holding phrase or play a short built-in cue so the caller does not hear unexplained silence.
 
-See [Architecture](docs/architecture.md) for the ownership and trust model, [Protocol](docs/protocol.md) for model-neutral integration, [Live setup](docs/live-setup.md) for the Telnyx/tunnel sequence, the [private MCP experiment](docs/mcp-experiment.md) for the unmerged hosted-agent adapter, and the [conversation canary](docs/conversation-canary.md) for a repeatable human test.
+See [Architecture](docs/architecture.md) for the ownership and trust model, [Protocol](docs/protocol.md) for model-neutral integration, [Live setup](docs/live-setup.md) for the Telnyx/tunnel sequence, [MCP integration](docs/mcp.md) for local and hosted MCP clients, and the [conversation canary](docs/conversation-canary.md) for a repeatable human test.
 
 ## Status
 
-Version `0.5.0-alpha.2` on `experiment/remote-mcp-adapter` preserves the proven `0.4.2` local workflow and experimentally adds:
+Version `0.5.0` preserves the proven local workflow and adds:
 
 - a standard-I/O MCP server built with the official Rust MCP SDK;
 - focused `status`, `dial`, cursor-batched `wait`, sequence-targeted `speak`, and `hangup` tools;
@@ -30,7 +30,7 @@ Version `0.5.0-alpha.2` on `experiment/remote-mcp-adapter` preserves the proven 
 - a loopback batch-event endpoint that keeps the existing 256-event history and surfaces cursor gaps.
 - a user-held live-canary supervisor that proves remote control-plane registration before starting telephone infrastructure and retains both foreground process groups through teardown.
 
-The private MCP path is locally tested but has not been connected, installed, deployed, or used for a real call. See [Private MCP experiment](docs/mcp-experiment.md).
+The private OpenAI MCP path passed status-only discovery and one bounded live call from durable root Cora's existing context-rich session. The call included an ordinary tool lookup, a targeted spoken response, normal hangup, provider-side inactive-call proof, and complete local teardown. The stdio MCP server can also be launched by local MCP hosts such as Claude Code. See [MCP integration](docs/mcp.md).
 
 The underlying Bellhound `0.4.2` behavior provides:
 
@@ -49,7 +49,7 @@ The underlying Bellhound `0.4.2` behavior provides:
 
 Live use requires a dedicated Telnyx Call Control application and a durable WSS tunnel or host.
 
-## Experimental MCP adapter
+## MCP adapter
 
 With an already-running Bellhound relay, start the private stdio adapter locally with:
 
@@ -57,9 +57,11 @@ With an already-running Bellhound relay, start the private stdio adapter locally
 bellhound --config bellhound.toml mcp
 ```
 
-The process reads MCP JSON-RPC from stdin, writes MCP responses to stdout, and sends diagnostics to stderr. It does not bind another network listener. The intended private remote transport is OpenAI Secure MCP Tunnel through `tunnel-client`; connection and plugin setup are separate user-assisted steps and are not performed by the build.
+The process reads MCP JSON-RPC from stdin, writes MCP responses to stdout, and sends diagnostics to stderr. It does not bind another network listener. Local MCP hosts can launch it directly. OpenAI-hosted agents can reach it through Secure MCP Tunnel and `tunnel-client`; connection and app setup remain separate user-assisted steps and are not performed by the build.
 
 Use `examples/mcp-status-only.toml` for the first tool-discovery gate. It contains no Telnyx configuration and deliberately cannot operate the normal Bellhound runtime.
+
+The OpenAI tunnel runtime key is separate from the Telnyx API key. Ongoing tunnel use requires a runtime key valid for the intended service interval and restricted to Tunnels Read + Use. Store both keys in an operating-system credential store or local secret broker; never put either value in Git or TOML.
 
 ## Build
 

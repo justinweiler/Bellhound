@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0 - 2026-10-13
+
+- Promote the standard-I/O MCP adapter to the main branch after status-only discovery and one bounded live OpenAI Secure MCP Tunnel canary.
+- Prove that durable root Cora can retain her existing session context, use an ordinary tool during the call, answer through Bellhound, hang up normally, and leave the Telnyx leg inactive.
+- Document direct local MCP use, Claude Code registration, OpenAI tunnel credential boundaries, the proven canary evidence, and the remaining always-on service work.
+- Preserve the JSON Lines and blocking CLI integrations alongside the five focused MCP tools.
+
 ## 0.5.0-alpha.2 - 2026-10-13
 
 - Require a positive control-plane `tunnel metadata fetched` event before reporting remote readiness; fail immediately on HTTP 401 or `invalid_api_key` even when local doctor/health checks pass.
