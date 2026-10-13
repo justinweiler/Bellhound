@@ -1,6 +1,6 @@
 # MCP integration
 
-Bellhound `0.5.0` includes a standard-input/output MCP server so the reasoning
+Bellhound `0.6.0` includes a standard-input/output MCP server so the reasoning
 agent that decides to call can own the telephone turn loop. Bellhound continues
 to own telephony, speech transport, ordering, and cleanup; it does not insert a
 second conversational model.
@@ -194,16 +194,16 @@ server, negotiates MCP, inspects all five tools and annotations, calls status an
 wait, and proves duplicate `speak` suppression survives an MCP server restart.
 It uses no Telnyx credential and places no call.
 
-## Current operational limit
+## Always-on operation
 
-The MCP tool contract is merged and the private hosted path is proven, but the
-repository does not yet install an always-on service. The bounded canary
-supervisor deliberately stops after one short session. Autonomous round-the-clock
-use still needs a durable local service that keeps `tunnel-client` reachable and
-starts or locates the Bellhound relay without a human-held Terminal.
+The MCP tool contract and private hosted path are proven. Bellhound also ships a
+macOS user-service supervisor that keeps `tunnel-client`, the Bellhound relay,
+and the temporary telephone WSS path under one lifecycle. See
+[Always-on MCP service](mcp-service.md). The bounded canary supervisor remains a
+separate proof harness and deliberately stops after one short session.
 
-A long-lived runtime key is necessary for that service, but the key alone does
-not make Bellhound always-on.
+A long-lived runtime key is necessary for the service, but the supervisor and
+LaunchAgent provide the actual process ownership and restart behavior.
 
 Other limits:
 

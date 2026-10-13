@@ -194,8 +194,8 @@ impl Config {
         if self.relay.token_env.trim().is_empty() {
             bail!("relay.token_env must not be empty");
         }
-        if self.relay.max_call_seconds == 0 {
-            bail!("relay.max_call_seconds must be greater than zero");
+        if !(30..=3600).contains(&self.relay.max_call_seconds) {
+            bail!("relay.max_call_seconds must be between 30 and 3600");
         }
         if self.relay.continuation_window_ms > 5_000 {
             bail!("relay.continuation_window_ms must not exceed 5000");
@@ -352,6 +352,21 @@ mod tests {
                 .to_string()
                 .contains("continuation_window_ms")
         );
+    }
+
+    #[test]
+    fn rejects_unsafe_call_duration_limits() {
+        for seconds in [0, 29, 3_601] {
+            let mut config = Config::default();
+            config.relay.max_call_seconds = seconds;
+            assert!(
+                config
+                    .validate()
+                    .unwrap_err()
+                    .to_string()
+                    .contains("max_call_seconds")
+            );
+        }
     }
 
     #[test]

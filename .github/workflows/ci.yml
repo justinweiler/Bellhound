@@ -21,7 +21,7 @@ jobs:
       - run: cargo build --release --locked
       - if: runner.os == 'macOS'
         run: |
-          PYTHONDONTWRITEBYTECODE=1 PYTHONWARNINGS='error::ResourceWarning' python3 -m unittest tests/test_mcp_canary_supervisor.py -v
+          PYTHONDONTWRITEBYTECODE=1 PYTHONWARNINGS='error::ResourceWarning' python3 -m unittest tests/test_mcp_canary_supervisor.py tests/test_mcp_service_supervisor.py -v
           xcrun swiftc -typecheck scripts/mcp-key-dialog.swift
 
   lint:

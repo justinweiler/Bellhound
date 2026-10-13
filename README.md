@@ -20,15 +20,18 @@ Bellhound contains no language model and makes no decisions. It translates final
 
 See [Architecture](docs/architecture.md) for the ownership and trust model, [Protocol](docs/protocol.md) for model-neutral integration, [Live setup](docs/live-setup.md) for the Telnyx/tunnel sequence, [MCP integration](docs/mcp.md) for local and hosted MCP clients, and the [conversation canary](docs/conversation-canary.md) for a repeatable human test.
 
+For private always-on use on macOS, see the [MCP service](docs/mcp-service.md). It brokers credentials from Keychain, owns the Bellhound and tunnel process trees, and adds a service watchdog behind the existing Bellhound and carrier call-duration limits.
+
 ## Status
 
-Version `0.5.0` preserves the proven local workflow and adds:
+Version `0.6.0` preserves the proven local workflow and adds:
 
 - a standard-I/O MCP server built with the official Rust MCP SDK;
 - focused `status`, `dial`, cursor-batched `wait`, sequence-targeted `speak`, and `hangup` tools;
 - structured results, accurate safety annotations, correlation timing, redacted events, and retry-safe command IDs;
 - a loopback batch-event endpoint that keeps the existing 256-event history and surfaces cursor gaps.
 - a user-held live-canary supervisor that proves remote control-plane registration before starting telephone infrastructure and retains both foreground process groups through teardown.
+- an optional macOS user service that keeps the private MCP, Bellhound relay, and telephone WSS paths alive under one supervisor with Keychain brokerage and a third call-duration watchdog.
 
 The private OpenAI MCP path passed status-only discovery and one bounded live call from durable root Cora's existing context-rich session. The call included an ordinary tool lookup, a targeted spoken response, normal hangup, provider-side inactive-call proof, and complete local teardown. The stdio MCP server can also be launched by local MCP hosts such as Claude Code. See [MCP integration](docs/mcp.md).
 

@@ -17,5 +17,7 @@ Until a public repository and private vulnerability-reporting channel exist, do 
 - Private MCP event results omit call-control and session identifiers, but conversation text crosses the MCP boundary because the originating model needs it. Apply the target workspace's data-handling policy.
 - A Secure MCP Tunnel runtime key should have only Tunnels Read + Use. Store it outside repository files and process arguments, independently from the Telnyx API key. A tunnel association and local process boundary are not an end-user OAuth design and are insufficient for a public plugin.
 - MCP request IDs provide retry suppression, not caller identity or action approval. The originating runtime keeps its normal confirmation requirements.
+- The macOS LaunchAgent contains paths and restart policy only. Its supervisor resolves the tunnel key and relay token from Keychain at startup and does not write them to the plist, process arguments, service state, or logs.
+- `relay.max_call_seconds` is validated between 30 and 3600 seconds and is enforced independently by Telnyx, Bellhound's relay timer, and the optional service watchdog. Keep it aligned with the intended cost ceiling.
 
 Do not attach logs or configuration files to a report until telephone numbers, account identifiers, URLs, and tokens have been removed.

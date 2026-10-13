@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.0 - 2026-10-13
+
+- Add a macOS user-service supervisor and LaunchAgent installer for always-on private MCP availability.
+- Broker the OpenAI tunnel key and Bellhound relay token from Keychain without persisting secret values in service configuration.
+- Allow the existing Bellhound foreground owner to run without a fixed session deadline when it is supervised as a service.
+- Validate call-duration limits between 30 and 3600 seconds and add a service watchdog at the configured limit plus five seconds, behind the existing Telnyx carrier limit and Bellhound relay hangup timer.
+
 ## 0.5.0 - 2026-10-13
 
 - Promote the standard-I/O MCP adapter to the main branch after status-only discovery and one bounded live OpenAI Secure MCP Tunnel canary.

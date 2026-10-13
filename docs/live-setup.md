@@ -90,4 +90,4 @@ Bellhound uses the `call_control_id` from Telnyx's setup frame to hang up the te
 
 Do not log the ignored local configuration: it contains telephone numbers and account resource IDs even though it contains no password.
 
-For direct stdio clients, the proven private OpenAI Secure MCP Tunnel path, credential separation, and current persistent-service limit, see [MCP integration](mcp.md). The normal live setup does not require MCP.
+For direct stdio clients, the proven private OpenAI Secure MCP Tunnel path, credential separation, and the optional macOS user service, see [MCP integration](mcp.md). The normal live setup does not require MCP.

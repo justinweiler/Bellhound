@@ -117,8 +117,8 @@ run() {
 
   max_seconds=${BELLHOUND_OWNER_MAX_SECONDS:-420}
   case "$max_seconds" in *[!0-9]*|'') echo 'BELLHOUND_OWNER_MAX_SECONDS must be an integer' >&2; exit 1 ;; esac
-  if [ "$max_seconds" -lt 30 ] || [ "$max_seconds" -gt 3600 ]; then
-    echo 'BELLHOUND_OWNER_MAX_SECONDS must be between 30 and 3600' >&2
+  if [ "$max_seconds" -ne 0 ] && { [ "$max_seconds" -lt 30 ] || [ "$max_seconds" -gt 3600 ]; }; then
+    echo 'BELLHOUND_OWNER_MAX_SECONDS must be 0 for unbounded service mode or between 30 and 3600' >&2
     exit 1
   fi
 
@@ -215,7 +215,7 @@ PY
       exit 1
     fi
     now=$(date +%s)
-    if [ $((now - started_at)) -ge "$max_seconds" ]; then
+    if [ "$max_seconds" -ne 0 ] && [ $((now - started_at)) -ge "$max_seconds" ]; then
       log_owner "owner lifetime reached ${max_seconds}s"
       exit 0
     fi
