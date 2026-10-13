@@ -22,7 +22,7 @@ See [Architecture](docs/architecture.md) for the ownership and trust model, [Pro
 
 ## Status
 
-Version `0.4.1` provides:
+Version `0.4.2` provides:
 
 - a strict JSON Lines agent protocol;
 - blocking `wait`, `speak`, and `hangup` CLI commands for any tool-using model;

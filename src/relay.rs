@@ -791,16 +791,30 @@ fn matches_suppression_phrases(text: &str, phrases: &[String]) -> bool {
         if normalized == phrase || (phrase_words >= 4 && normalized.contains(&phrase)) {
             return true;
         }
-        let boundary_match = normalized.starts_with(&format!("{phrase} "))
-            || normalized.ends_with(&format!(" {phrase}"));
+        let trailing_words = normalized.strip_prefix(&format!("{phrase} "));
+        let leading_words = normalized.strip_suffix(&format!(" {phrase}"));
+        let boundary_match = trailing_words.is_some() || leading_words.is_some();
         if boundary_match {
             boundary_matches = boundary_matches.saturating_add(1);
             if word_count <= phrase_words.saturating_add(1) {
                 return true;
             }
+            if trailing_words.is_some_and(is_short_possessive_vocative)
+                || leading_words.is_some_and(is_short_possessive_vocative)
+            {
+                return true;
+            }
         }
     }
     boundary_matches >= 2
+}
+
+fn is_short_possessive_vocative(value: &str) -> bool {
+    let mut words = value.split_whitespace();
+    matches!(
+        (words.next(), words.next(), words.next()),
+        (Some("my"), Some(_), None)
+    )
 }
 
 fn normalize_phrase(value: &str) -> String {
@@ -918,11 +932,14 @@ mod tests {
         let config = Config::default();
         assert!(!should_acknowledge(&config, "Thank you, love."));
         assert!(!should_acknowledge(&config, "Goodbye."));
+        assert!(!should_acknowledge(&config, "Goodbye, my dear."));
+        assert!(!should_acknowledge(&config, "My dear, goodbye."));
         assert!(!should_acknowledge(&config, "Thank you, hotness, goodbye."));
         assert!(should_acknowledge(
             &config,
             "Thank you, now check the monitor."
         ));
+        assert!(should_acknowledge(&config, "Goodbye, check the monitor."));
         assert!(matches_suppression_phrases(
             "Your call has been forwarded to an automated voice messaging system.",
             &config.acknowledgement.suppress_for_session_phrases,

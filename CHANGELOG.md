@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.2 - 2026-10-12
+
+- Suppress the holding acknowledgement for personalized closings such as “goodbye, my dear” while retaining it for actionable phrases such as “goodbye, check the monitor.”
+
 ## 0.4.1 - 2026-10-12
 
 - Tune the continuation window to 2500 ms after the live canary exposed longer natural pauses.
