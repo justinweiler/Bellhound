@@ -385,6 +385,17 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                         last,
                         responding_to_sequence,
                     }) => {
+                        if responding_to_sequence.is_none()
+                            && (pending_turn.is_some() || pending_incoming_turn.is_some())
+                        {
+                            state.sink.send(AgentEvent::Error {
+                                code: "missing_response_sequence".to_owned(),
+                                message: "an unanswered caller turn is active; supply responding_to_sequence"
+                                    .to_owned(),
+                                retryable: true,
+                            });
+                            continue;
+                        }
                         if let Some(target) = responding_to_sequence {
                             let active = pending_turn.as_ref().map(|turn| turn.sequence);
                             if pending_incoming_turn.is_some() || active != Some(target) {
@@ -770,18 +781,26 @@ fn matches_suppression_phrases(text: &str, phrases: &[String]) -> bool {
         return false;
     }
     let word_count = normalized.split_whitespace().count();
-    phrases.iter().any(|phrase| {
+    let mut boundary_matches = 0_usize;
+    for phrase in phrases {
         let phrase = normalize_phrase(phrase);
         if phrase.is_empty() {
-            return false;
+            continue;
         }
         let phrase_words = phrase.split_whitespace().count();
-        normalized == phrase
-            || (phrase_words >= 4 && normalized.contains(&phrase))
-            || (word_count <= phrase_words.saturating_add(1)
-                && (normalized.starts_with(&format!("{phrase} "))
-                    || normalized.ends_with(&format!(" {phrase}"))))
-    })
+        if normalized == phrase || (phrase_words >= 4 && normalized.contains(&phrase)) {
+            return true;
+        }
+        let boundary_match = normalized.starts_with(&format!("{phrase} "))
+            || normalized.ends_with(&format!(" {phrase}"));
+        if boundary_match {
+            boundary_matches = boundary_matches.saturating_add(1);
+            if word_count <= phrase_words.saturating_add(1) {
+                return true;
+            }
+        }
+    }
+    boundary_matches >= 2
 }
 
 fn normalize_phrase(value: &str) -> String {
@@ -899,6 +918,11 @@ mod tests {
         let config = Config::default();
         assert!(!should_acknowledge(&config, "Thank you, love."));
         assert!(!should_acknowledge(&config, "Goodbye."));
+        assert!(!should_acknowledge(&config, "Thank you, hotness, goodbye."));
+        assert!(should_acknowledge(
+            &config,
+            "Thank you, now check the monitor."
+        ));
         assert!(matches_suppression_phrases(
             "Your call has been forwarded to an automated voice messaging system.",
             &config.acknowledgement.suppress_for_session_phrases,

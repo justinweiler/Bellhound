@@ -13,7 +13,7 @@ This canary tests turn boundaries, acknowledgements, tool use, stale-response pr
 
 Speak naturally. The pauses below are deliberate.
 
-1. **Basic turn:** “First test. Please repeat the phrase red lantern.”
+1. **Basic turn:** “First test. Please repeat the phrase magic sauce.”
 2. **Continuation turn:** “Second test. Please remember purple” — pause for about half a second — “crocodile” — pause again — “and repeat the complete phrase.”
 3. **Tool turn:** “Third test. Check the current time in Los Angeles and tell me the hour and minute.”
 4. **Conversation advance:** Immediately after Bellhound says “Got it. Give me a moment,” say: “Change of plan. Do not tell me the time. What was the phrase from the first test?”

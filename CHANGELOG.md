@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1 - 2026-10-12
+
+- Tune the continuation window to 2500 ms after the live canary exposed longer natural pauses.
+- Suppress acknowledgements when multiple social or closing phrases appear in one personalized farewell.
+- Reject unsequenced `speak` commands while a caller turn is active instead of associating proactive speech with whichever utterance arrived most recently.
+
 ## 0.4.0 - 2026-10-12
 
 - Buffer closely spaced final STT fragments into one continuation-aware caller turn.

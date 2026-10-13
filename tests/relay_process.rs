@@ -204,6 +204,21 @@ text = "Got it. Give me a moment."
     assert_eq!(acknowledged["text"], "Got it. Give me a moment.");
     assert!(acknowledged["response_latency_ms"].as_u64().unwrap() >= 250);
 
+    let untargeted = Command::new(env!("CARGO_BIN_EXE_bellhound"))
+        .args([
+            "--config",
+            config_path.to_str().unwrap(),
+            "speak",
+            "This answer omitted its sequence.",
+        ])
+        .env("BELLHOUND_RELAY_TOKEN", token)
+        .output()
+        .unwrap();
+    assert!(untargeted.status.success());
+    let missing_target = read_event(&mut stdout);
+    assert_eq!(missing_target["event"], "error");
+    assert_eq!(missing_target["code"], "missing_response_sequence");
+
     let stale = Command::new(env!("CARGO_BIN_EXE_bellhound"))
         .args([
             "--config",

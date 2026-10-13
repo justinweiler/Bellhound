@@ -47,6 +47,15 @@ pub async fn run(config: Config, script: PathBuf) -> Result<()> {
                 responding_to_sequence,
                 ..
             }) => {
+                if responding_to_sequence.is_none() {
+                    sink.send(AgentEvent::Error {
+                        code: "missing_response_sequence".to_owned(),
+                        message: "supply responding_to_sequence for the active simulated utterance"
+                            .to_owned(),
+                        retryable: true,
+                    });
+                    continue;
+                }
                 if responding_to_sequence.is_some_and(|target| target != sequence) {
                     sink.send(AgentEvent::Error {
                         code: "stale_response".to_owned(),

@@ -44,7 +44,7 @@ The JSON Lines command forms are:
 {"command":"ping"}
 ```
 
-Unknown fields and unknown commands are rejected. Text size is bounded by `protocol.max_speak_chars`. `responding_to_sequence` is optional for backward compatibility, but live adapters should always supply it. Bellhound emits a retryable `stale_response` error instead of speaking when the target is no longer the active unanswered utterance or a newer caller turn is still being buffered.
+Unknown fields and unknown commands are rejected. Text size is bounded by `protocol.max_speak_chars`. An active caller turn requires `responding_to_sequence`; Bellhound emits `missing_response_sequence` when it is omitted and `stale_response` when the target is no longer active or a newer caller turn is still being buffered. Untargeted speech remains available only when no caller turn is awaiting a response.
 
 ## Blocking CLI adapter
 

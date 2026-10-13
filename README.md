@@ -22,7 +22,7 @@ See [Architecture](docs/architecture.md) for the ownership and trust model, [Pro
 
 ## Status
 
-Version `0.4.0` provides:
+Version `0.4.1` provides:
 
 - a strict JSON Lines agent protocol;
 - blocking `wait`, `speak`, and `hangup` CLI commands for any tool-using model;
@@ -98,7 +98,7 @@ webhook_path = "/webhooks/telnyx"
 token_env = "BELLHOUND_RELAY_TOKEN"
 max_call_seconds = 300
 emit_partial_transcripts = false
-continuation_window_ms = 900
+continuation_window_ms = 2500
 
 [protocol]
 max_speak_chars = 2000
