@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0-alpha.1 - 2026-10-13
+
+- Add an experimental standard-I/O MCP adapter using the official Rust MCP SDK.
+- Expose focused status, dial, cursor-batched wait, sequence-targeted speak, and hangup tools with structured schemas and safety annotations.
+- Add bounded batch reads over the existing loopback event history without exposing the control listener.
+- Carry UUID command IDs through dial and relay-level speak/hangup deduplication, including across MCP adapter restarts.
+- Redact private call/session identifiers from MCP event results and record per-tool timing for the later latency canary.
+
 ## 0.4.2 - 2026-10-12
 
 - Suppress the holding acknowledgement for personalized closings such as “goodbye, my dear” while retaining it for actionable phrases such as “goodbye, check the monitor.”

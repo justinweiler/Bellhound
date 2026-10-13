@@ -1,6 +1,6 @@
 # Model-neutral protocol
 
-Bellhound does not call a language-model API. The reasoning model stays in its existing session and uses either a long-lived JSON Lines process or one-shot CLI commands. This keeps Bellhound compatible with hosted models, local models, coding agents, shell-capable assistants, and future runtimes.
+Bellhound does not call a language-model API. The reasoning model stays in its existing session and uses a long-lived JSON Lines process, one-shot CLI commands, or the experimental focused MCP adapter. This keeps Bellhound compatible with hosted models, local models, coding agents, shell-capable assistants, and future runtimes.
 
 ## Event envelope
 
@@ -73,6 +73,16 @@ bellhound --config bellhound.toml ping
 ```
 
 The control listener uses `relay.control_bind`, accepts only the configured token, and must remain on loopback. It is deliberately separate from the listener exposed through the public WSS tunnel.
+
+## Experimental MCP adapter
+
+`bellhound mcp` serves MCP over standard input/output and exposes `bellhound_status`, `bellhound_dial`, `bellhound_wait`, `bellhound_speak`, and `bellhound_hangup`. The adapter uses the same loopback control listener and event history as the CLI. It does not expose `relay.control_bind`, raw shell access, arbitrary URLs, telephone-number overrides, or raw call-control identifiers.
+
+One `bellhound_wait` returns an ordered batch of at most 32 events and a `next_cursor`. It waits at most 30 seconds, reports timeouts without advancing the cursor, and returns an explicit `history_gap` object when the requested cursor is older than retained history.
+
+`dial`, `speak`, and `hangup` require a UUID `request_id`. Dial uses it as Telnyx's command ID. The relay retains the latest 256 MCP command IDs and returns a duplicate receipt without redispatching the same `speak` or `hangup`; reusing an ID with different arguments returns a tool-visible conflict.
+
+MCP tool results include a generated correlation ID or request ID plus elapsed time. They whitelist conversation fields needed by the model and omit Bellhound/Telnyx private session identifiers. Tool acceptance means the command entered Bellhound, not that the telephone action completed; clients must keep consuming events.
 
 ## Adapter contract
 

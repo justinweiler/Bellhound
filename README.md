@@ -13,16 +13,25 @@ Bellhound was written to fill that human-AI need. It is more than another chime,
 Bellhound is a small, line-oriented telephone bridge for interactive agents. The agent that decides to call remains the reasoning agent; Bellhound supplies ears, a mouth, and telephone transport.
 
 ```text
-agent <-> JSON Lines or blocking CLI <-> Bellhound <-> Telnyx Conversation Relay <-> telephone
+agent <-> JSON Lines, blocking CLI, or private MCP <-> Bellhound <-> Telnyx Conversation Relay <-> telephone
 ```
 
 Bellhound contains no language model and makes no decisions. It translates final speech-to-text frames into deterministic terminal events and translates agent `speak` commands into Telnyx text-to-speech frames. While an agent is thinking, Bellhound can speak a fixed holding phrase or play a short built-in cue so the caller does not hear unexplained silence.
 
-See [Architecture](docs/architecture.md) for the ownership and trust model, [Protocol](docs/protocol.md) for model-neutral integration, [Live setup](docs/live-setup.md) for the Telnyx/tunnel sequence, and the [conversation canary](docs/conversation-canary.md) for a repeatable human test.
+See [Architecture](docs/architecture.md) for the ownership and trust model, [Protocol](docs/protocol.md) for model-neutral integration, [Live setup](docs/live-setup.md) for the Telnyx/tunnel sequence, the [private MCP experiment](docs/mcp-experiment.md) for the unmerged hosted-agent adapter, and the [conversation canary](docs/conversation-canary.md) for a repeatable human test.
 
 ## Status
 
-Version `0.4.2` provides:
+Version `0.5.0-alpha.1` on `experiment/remote-mcp-adapter` preserves the proven `0.4.2` local workflow and experimentally adds:
+
+- a standard-I/O MCP server built with the official Rust MCP SDK;
+- focused `status`, `dial`, cursor-batched `wait`, sequence-targeted `speak`, and `hangup` tools;
+- structured results, accurate safety annotations, correlation timing, redacted events, and retry-safe command IDs;
+- a loopback batch-event endpoint that keeps the existing 256-event history and surfaces cursor gaps.
+
+The private MCP path is locally tested but has not been connected, installed, deployed, or used for a real call. See [Private MCP experiment](docs/mcp-experiment.md).
+
+The underlying Bellhound `0.4.2` behavior provides:
 
 - a strict JSON Lines agent protocol;
 - blocking `wait`, `speak`, and `hangup` CLI commands for any tool-using model;
@@ -38,6 +47,16 @@ Version `0.4.2` provides:
 - continuation-aware caller turns and sequence-targeted replies that reject stale answers.
 
 Live use requires a dedicated Telnyx Call Control application and a durable WSS tunnel or host.
+
+## Experimental MCP adapter
+
+With an already-running Bellhound relay, start the private stdio adapter locally with:
+
+```sh
+bellhound --config bellhound.toml mcp
+```
+
+The process reads MCP JSON-RPC from stdin, writes MCP responses to stdout, and sends diagnostics to stderr. It does not bind another network listener. The intended private remote transport is OpenAI Secure MCP Tunnel through `tunnel-client`; connection and plugin setup are separate user-assisted steps and are not performed by the build.
 
 ## Build
 

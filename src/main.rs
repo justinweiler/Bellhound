@@ -1,6 +1,7 @@
 mod config;
 mod control;
 mod credentials;
+mod mcp;
 mod output;
 mod protocol;
 mod relay;
@@ -79,6 +80,8 @@ enum Command {
     },
     /// Check the local control path.
     Ping,
+    /// Serve Bellhound's experimental private MCP adapter over standard I/O.
+    Mcp,
 }
 
 #[tokio::main]
@@ -173,6 +176,11 @@ async fn main() -> Result<()> {
             let config = Config::load(&cli.config)?;
             config.validate()?;
             control::command(&config, AgentCommand::Ping).await
+        }
+        Command::Mcp => {
+            let config = Config::load(&cli.config)?;
+            config.validate()?;
+            mcp::run(config).await
         }
     }
 }

@@ -1,4 +1,5 @@
 use std::{
+    collections::{HashMap, VecDeque},
     sync::{Arc, Mutex as StdMutex},
     time::{Duration, Instant},
 };
@@ -22,7 +23,7 @@ use uuid::Uuid;
 
 use crate::{
     config::{AcknowledgementMode, Config},
-    output::{self, EventSink, NextEvent},
+    output::{self, EventSink, NextEvent, NextEvents},
     protocol::{
         AgentCommand, AgentEvent, TelnyxFrame, telnyx_end_frame, telnyx_play_frame,
         telnyx_text_frame,
@@ -31,6 +32,7 @@ use crate::{
 };
 
 const THINKING_SOUND: &[u8] = include_bytes!("../assets/bellhound-thinking.mp3");
+const COMMAND_ID_CACHE_CAPACITY: usize = 256;
 
 #[derive(Clone)]
 struct AppState {
@@ -41,6 +43,33 @@ struct AppState {
     active_session: Arc<Mutex<Option<String>>>,
     active_call_control_id: Arc<StdMutex<Option<String>>>,
     pending_opening: Arc<StdMutex<Option<PendingOpening>>>,
+    command_ids: Arc<StdMutex<CommandIdCache>>,
+}
+
+#[derive(Default)]
+struct CommandIdCache {
+    entries: HashMap<Uuid, String>,
+    order: VecDeque<Uuid>,
+}
+
+impl CommandIdCache {
+    fn accept(&mut self, request_id: Uuid, fingerprint: String) -> Result<bool, ()> {
+        if let Some(stored) = self.entries.get(&request_id) {
+            return if stored == &fingerprint {
+                Ok(true)
+            } else {
+                Err(())
+            };
+        }
+        self.entries.insert(request_id, fingerprint);
+        self.order.push_back(request_id);
+        while self.order.len() > COMMAND_ID_CACHE_CAPACITY {
+            if let Some(expired) = self.order.pop_front() {
+                self.entries.remove(&expired);
+            }
+        }
+        Ok(false)
+    }
 }
 
 struct PendingOpening {
@@ -110,6 +139,7 @@ pub async fn run(config: Config) -> Result<()> {
         active_session: Arc::new(Mutex::new(None)),
         active_call_control_id: Arc::new(StdMutex::new(None)),
         pending_opening: Arc::new(StdMutex::new(None)),
+        command_ids: Arc::new(StdMutex::new(CommandIdCache::default())),
     };
     let app = Router::new()
         .route(&config.route(), get(upgrade))
@@ -120,8 +150,11 @@ pub async fn run(config: Config) -> Result<()> {
         .route(&config.webhook_route(), post(webhook))
         .with_state(state.clone());
     let control_app = Router::new()
+        .route("/v1/status", get(control_status))
+        .route("/v1/events", get(event_batch))
         .route("/v1/events/next", get(next_event))
         .route("/v1/commands", post(control_command))
+        .route("/v1/mcp/commands", post(idempotent_control_command))
         .route("/v1/opening", post(prepare_opening).delete(clear_opening))
         .with_state(state);
     tracing::info!(address = %config.relay.bind, "Bellhound relay listening");
@@ -151,6 +184,24 @@ struct WaitQuery {
     timeout_seconds: u64,
 }
 
+#[derive(Deserialize)]
+struct BatchQuery {
+    #[serde(default)]
+    after: u64,
+    #[serde(default = "default_batch_wait_seconds")]
+    timeout_seconds: u64,
+    #[serde(default = "default_batch_limit")]
+    limit: usize,
+}
+
+fn default_batch_wait_seconds() -> u64 {
+    20
+}
+
+fn default_batch_limit() -> usize {
+    16
+}
+
 fn default_wait_seconds() -> u64 {
     120
 }
@@ -167,6 +218,79 @@ struct HistoryGapResponse {
     error: &'static str,
     after: u64,
     oldest_event_id: u64,
+}
+
+#[derive(Serialize)]
+struct ControlStatusResponse {
+    version: &'static str,
+    active_call: bool,
+    opening_pending: bool,
+    oldest_event_id: Option<u64>,
+    latest_event_id: Option<u64>,
+}
+
+async fn control_status(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if !control_authorized(&headers, &state) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let history = state.sink.history_status();
+    let active_call = state.active_session.lock().await.is_some();
+    let opening_pending = state
+        .pending_opening
+        .lock()
+        .is_ok_and(|opening| opening.is_some());
+    Json(ControlStatusResponse {
+        version: env!("CARGO_PKG_VERSION"),
+        active_call,
+        opening_pending,
+        oldest_event_id: history.oldest_event_id,
+        latest_event_id: history.latest_event_id,
+    })
+    .into_response()
+}
+
+#[derive(Serialize)]
+struct EventBatchResponse {
+    events: Vec<output::EventEnvelope>,
+    next_cursor: u64,
+}
+
+async fn event_batch(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<BatchQuery>,
+) -> Response {
+    if !control_authorized(&headers, &state) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let wait = Duration::from_secs(query.timeout_seconds.clamp(1, 30));
+    match state
+        .sink
+        .events_after(query.after, query.limit.clamp(1, 32), wait)
+        .await
+    {
+        Some(NextEvents::Events(events)) => {
+            let next_cursor = events.last().map_or(query.after, |event| event.event_id);
+            Json(EventBatchResponse {
+                events: events
+                    .into_iter()
+                    .map(|event| event.as_ref().clone())
+                    .collect(),
+                next_cursor,
+            })
+            .into_response()
+        }
+        Some(NextEvents::HistoryGap { oldest_event_id }) => (
+            StatusCode::CONFLICT,
+            Json(HistoryGapResponse {
+                error: "event_history_gap",
+                after: query.after,
+                oldest_event_id,
+            }),
+        )
+            .into_response(),
+        None => StatusCode::NO_CONTENT.into_response(),
+    }
 }
 
 async fn next_event(
@@ -208,6 +332,64 @@ async fn control_command(
         &state.commands,
     );
     StatusCode::ACCEPTED
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct IdempotentCommandRequest {
+    request_id: String,
+    command: AgentCommand,
+}
+
+#[derive(Serialize)]
+struct CommandReceipt {
+    accepted: bool,
+    duplicate: bool,
+    request_id: String,
+}
+
+async fn idempotent_control_command(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<IdempotentCommandRequest>,
+) -> Response {
+    if !control_authorized(&headers, &state) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let Ok(request_id) = Uuid::parse_str(&request.request_id) else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    let Ok(fingerprint) = serde_json::to_string(&request.command) else {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    };
+    let duplicate = match state.command_ids.lock() {
+        Ok(mut cache) => match cache.accept(request_id, fingerprint) {
+            Ok(duplicate) => duplicate,
+            Err(()) => return StatusCode::CONFLICT.into_response(),
+        },
+        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    };
+    if !duplicate {
+        output::dispatch_command(
+            request.command,
+            state.config.protocol.max_speak_chars,
+            &state.sink,
+            &state.commands,
+        );
+    }
+    (
+        if duplicate {
+            StatusCode::OK
+        } else {
+            StatusCode::ACCEPTED
+        },
+        Json(CommandReceipt {
+            accepted: true,
+            duplicate,
+            request_id: request_id.to_string(),
+        }),
+    )
+        .into_response()
 }
 
 #[derive(Deserialize)]
@@ -896,6 +1078,7 @@ mod tests {
             active_session: Arc::new(Mutex::new(None)),
             active_call_control_id: Arc::new(StdMutex::new(None)),
             pending_opening: Arc::new(StdMutex::new(None)),
+            command_ids: Arc::new(StdMutex::new(CommandIdCache::default())),
         };
         let mut sequence = 0;
         let outcome = handle_telnyx_text(
@@ -962,6 +1145,7 @@ mod tests {
             active_session: Arc::new(Mutex::new(None)),
             active_call_control_id: Arc::new(StdMutex::new(None)),
             pending_opening: Arc::new(StdMutex::new(None)),
+            command_ids: Arc::new(StdMutex::new(CommandIdCache::default())),
         };
         let mut sequence = 0;
         handle_telnyx_text(

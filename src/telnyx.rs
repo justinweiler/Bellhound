@@ -51,6 +51,14 @@ struct HangupRequest {
 }
 
 pub async fn dial(config: &Config) -> Result<()> {
+    dial_with_command_id(config, Uuid::new_v4(), true).await
+}
+
+pub async fn dial_for_adapter(config: &Config, command_id: Uuid) -> Result<()> {
+    dial_with_command_id(config, command_id, false).await
+}
+
+async fn dial_with_command_id(config: &Config, command_id: Uuid, emit_result: bool) -> Result<()> {
     let telnyx = config
         .telnyx
         .as_ref()
@@ -71,7 +79,7 @@ pub async fn dial(config: &Config) -> Result<()> {
         from: &telnyx.from_number,
         to: &telnyx.to_number,
         time_limit_secs: config.relay.max_call_seconds.max(30),
-        command_id: Uuid::new_v4().to_string(),
+        command_id: command_id.to_string(),
         conversation_relay_config: ConversationRelayConfig {
             url: websocket_url.clone(),
             // A short audible primer completes and warms Telnyx's greeting path. Bellhound sends
@@ -117,15 +125,17 @@ pub async fn dial(config: &Config) -> Result<()> {
         .json()
         .await
         .context("Telnyx returned an invalid Dial response")?;
-    println!(
-        "{}",
-        serde_json::json!({
-            "event": "dial_accepted",
-            "call_control_id": response.data.call_control_id,
-            "call_leg_id": response.data.call_leg_id,
-            "call_session_id": response.data.call_session_id,
-        })
-    );
+    if emit_result {
+        println!(
+            "{}",
+            serde_json::json!({
+                "event": "dial_accepted",
+                "call_control_id": response.data.call_control_id,
+                "call_leg_id": response.data.call_leg_id,
+                "call_session_id": response.data.call_session_id,
+            })
+        );
+    }
     Ok(())
 }
 

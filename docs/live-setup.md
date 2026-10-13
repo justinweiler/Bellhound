@@ -89,3 +89,5 @@ End with:
 Bellhound uses the `call_control_id` from Telnyx's setup frame to hang up the telephone leg after ending Conversation Relay. Its duration limit follows the same path, so a stuck relay cannot leave a live call behind.
 
 Do not log the ignored local configuration: it contains telephone numbers and account resource IDs even though it contains no password.
+
+For the unmerged private stdio adapter and the separately gated OpenAI Secure MCP Tunnel connection steps, see [Private MCP experiment](mcp-experiment.md). The normal live setup does not require MCP and remains the proven path.
