@@ -6,6 +6,7 @@
 - Prove that durable root Cora can retain her existing session context, use an ordinary tool during the call, answer through Bellhound, hang up normally, and leave the Telnyx leg inactive.
 - Document direct local MCP use, Claude Code registration, OpenAI tunnel credential boundaries, the proven canary evidence, and the remaining always-on service work.
 - Preserve the JSON Lines and blocking CLI integrations alongside the five focused MCP tools.
+- Add a 256×256 optimized plugin icon for custom MCP app installation.
 
 ## 0.5.0-alpha.2 - 2026-10-13
 

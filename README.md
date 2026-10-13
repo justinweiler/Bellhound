@@ -63,6 +63,8 @@ Use `examples/mcp-status-only.toml` for the first tool-discovery gate. It contai
 
 The OpenAI tunnel runtime key is separate from the Telnyx API key. Ongoing tunnel use requires a runtime key valid for the intended service interval and restricted to Tunnels Read + Use. Store both keys in an operating-system credential store or local secret broker; never put either value in Git or TOML.
 
+Use `assets/bellhound-plugin-icon.png` when an MCP host requests a square PNG icon. It is the publication logo rendered at 256×256 and kept below OpenAI's 10 KB custom-app limit.
+
 ## Build
 
 ```sh
