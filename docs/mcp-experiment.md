@@ -1,8 +1,8 @@
 # Private MCP experiment
 
-Bellhound `0.5.0-alpha.1` adds an experimental standard-I/O MCP adapter so a context-rich hosted agent can own the telephone turn loop while Bellhound continues to own telephony, STT/TTS transport, ordering, and cleanup.
+Bellhound `0.5.0-alpha.2` adds an experimental standard-I/O MCP adapter so a context-rich hosted agent can own the telephone turn loop while Bellhound continues to own telephony, STT/TTS transport, ordering, and cleanup.
 
-This branch is a local experiment. It does not install a plugin, create an OpenAI Secure MCP Tunnel, expose a listener, configure credentials, or place a call.
+Building this branch alone does not install a plugin, create an OpenAI Secure MCP Tunnel, expose a listener, configure credentials, or place a call.
 
 ## Architecture
 
@@ -63,6 +63,8 @@ cargo fmt --all -- --check
 cargo test --all-targets --locked
 cargo clippy --all-targets --all-features --locked -- -D warnings
 cargo build --release --locked
+PYTHONDONTWRITEBYTECODE=1 PYTHONWARNINGS='error::ResourceWarning' python3 -m unittest tests/test_mcp_canary_supervisor.py -v
+xcrun swiftc -typecheck scripts/mcp-key-dialog.swift
 ```
 
 The process integration test starts a loopback relay and the real MCP stdio server, negotiates MCP, inspects all five tools and annotations, calls status and wait, and proves duplicate `speak` suppression survives an MCP server restart. It uses no Telnyx credential and places no call.
@@ -78,7 +80,7 @@ This gate proves MCP transport and tool discovery without starting telephone inf
 1. Build the experimental branch in its isolated worktree. Leave the Bellhound relay and foreground telephone supervisor stopped.
 2. In OpenAI Platform tunnel settings, create or select a tunnel associated with the target Platform organization and ChatGPT workspace. This requires the applicable Tunnels permissions.
 3. Obtain the official `tunnel-client` through the Platform download or current official release. Configure a local stdio profile whose MCP command runs the experimental `bellhound --config <worktree>/examples/mcp-status-only.toml mcp` process. This tracked profile has no Telnyx configuration, uses dedicated unused loopback ports, and names unset credentials. Supply only the tunnel runtime key through the local secret store or ephemeral environment; never put it in Git, TOML, chat, or command output.
-4. Run `tunnel-client doctor` and require healthy/ready status before connecting ChatGPT.
+4. Run `tunnel-client doctor` as a static configuration check. Then start the status-only client and require the authenticated control-plane log event `tunnel metadata fetched`; local `/healthz` and `/readyz` do not prove authentication. Any HTTP 401 or `invalid_api_key` is fatal and must stop the client before continuing.
 5. In ChatGPT Plugins, add a custom MCP server, choose **Tunnel**, select the approved tunnel, configure the requested authentication, review the warning, and create it as a private test plugin.
 6. Refresh discovered metadata and inspect the five tools. In the actual durable agent conversation, call only `bellhound_status`. The expected result is `control_reachable=false`, which proves the hosted session reached the local MCP process while confirming that no telephone runtime is active.
 
@@ -88,11 +90,13 @@ Gate 1 uses the outbound-only OpenAI Secure MCP Tunnel. It does **not** read the
 
 Only after Gate 1 succeeds, request separate approval to:
 
-1. Start the experimental foreground Bellhound supervisor with the existing private configuration. This also starts Bellhound's ordinary temporary public WSS tunnel so Telnyx Conversation Relay can reach the local relay.
-2. Supply the Bellhound relay token to the local MCP process through the secret store or ephemeral environment and restart the MCP/tunnel-client profile if required.
-3. Require `bellhound_status` to report a reachable control listener before dialing.
-4. Place one bounded comparison call, then measure MCP control round-trip and end-of-utterance-to-first-audio latency separately from reasoning and other tool time.
-5. Verify `ended`, supervisor exit, stopped Bellhound relay and public WSS tunnel, stopped or intentionally retained Secure MCP Tunnel client, and inactive Telnyx call state.
+1. Run `scripts/mcp-canary-supervisor.py` from a user-held foreground Terminal. Its native AppKit dialog masks the runtime key by default and offers an explicit Show key toggle; it never reads the clipboard, puts the key in arguments, or persists/logs it.
+2. The supervisor first runs the status-only MCP profile and requires positive authenticated control-plane registration. Invalid authentication aborts before Bellhound starts, so no public Telnyx WSS path or owner clock exists on credential failure.
+3. After authentication succeeds and the native credential dialog is closed, the supervisor writes a nonce-bound armed receipt and waits. The local operator releases that exact nonce only after the user explicitly confirms dialog closure and durable root Cora is ready; the 180-second owner clock has not started during this wait.
+4. After release, the same user-held process starts and retains Bellhound's owner process group with a maximum 180-second ceiling. This creates Bellhound's ordinary temporary public WSS tunnel so Telnyx Conversation Relay can reach the local relay. The supervisor brokers the relay token locally, completes status/ping survival checks, then starts the live MCP client and requires registration again.
+5. Require `bellhound_status` to report a reachable control listener before dialing.
+6. Place one bounded comparison call, then measure MCP control round-trip and end-of-utterance-to-first-audio latency separately from reasoning and other tool time.
+7. Verify `ended`, supervisor terminal receipt, stopped Bellhound relay and public WSS tunnel, stopped Secure MCP Tunnel client, and inactive Telnyx call state.
 
 The OpenAI Secure MCP Tunnel and Bellhound's temporary public Telnyx WSS tunnel serve different paths and require separate approval scopes.
 
@@ -101,7 +105,7 @@ The OpenAI Secure MCP Tunnel and Bellhound's temporary public Telnyx WSS tunnel 
 - The experiment does not prove that a hosted agent turn can keep issuing bounded MCP waits for an entire telephone conversation. Product timeout, tool-loop, and cancellation behavior require status-only discovery and then a live canary.
 - `bellhound_wait` clamps one request to 30 seconds because no reliable hosted-tool timeout is documented. The caller must retain and reuse the cursor across timeouts.
 - Dial idempotency is backed by Telnyx command IDs and the MCP process cache. Speech and hangup idempotency survive MCP adapter restarts only while the same relay process remains alive.
-- The MCP process does not start or own the foreground relay/public-WSS-tunnel supervisor. Status-only discovery deliberately leaves that runtime stopped; an explicitly approved live canary starts it separately. Autonomous durable hosting is later work.
+- The experimental user-held canary supervisor owns both local process groups for one bounded test. It is not a persistent daemon or autonomous durable-hosting solution.
 - Secure MCP Tunnel is suitable for private testing, not public plugin submission. A public Bellhound plugin would require a stable public HTTPS MCP endpoint and an end-user authorization design.
 - The private stdio experiment trusts the approved tunnel/workspace association and local process boundary. It does not add per-user OAuth inside Bellhound.
 - No latency improvement is claimed until the durable-session comparison is measured.

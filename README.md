@@ -22,12 +22,13 @@ See [Architecture](docs/architecture.md) for the ownership and trust model, [Pro
 
 ## Status
 
-Version `0.5.0-alpha.1` on `experiment/remote-mcp-adapter` preserves the proven `0.4.2` local workflow and experimentally adds:
+Version `0.5.0-alpha.2` on `experiment/remote-mcp-adapter` preserves the proven `0.4.2` local workflow and experimentally adds:
 
 - a standard-I/O MCP server built with the official Rust MCP SDK;
 - focused `status`, `dial`, cursor-batched `wait`, sequence-targeted `speak`, and `hangup` tools;
 - structured results, accurate safety annotations, correlation timing, redacted events, and retry-safe command IDs;
 - a loopback batch-event endpoint that keeps the existing 256-event history and surfaces cursor gaps.
+- a user-held live-canary supervisor that proves remote control-plane registration before starting telephone infrastructure and retains both foreground process groups through teardown.
 
 The private MCP path is locally tested but has not been connected, installed, deployed, or used for a real call. See [Private MCP experiment](docs/mcp-experiment.md).
 

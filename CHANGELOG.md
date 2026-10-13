@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0-alpha.2 - 2026-10-13
+
+- Require a positive control-plane `tunnel metadata fetched` event before reporting remote readiness; fail immediately on HTTP 401 or `invalid_api_key` even when local doctor/health checks pass.
+- Validate the runtime key against the status-only MCP profile before starting Bellhound's owner clock or public Telnyx WSS tunnel.
+- Add a single user-held foreground supervisor that owns Bellhound and tunnel-client process groups, records terminal exit evidence, and cleans descendants even when a group leader exits.
+- Add a native macOS credential dialog with masked input and an explicit Show key toggle; it never reads the clipboard or persists/logs the value.
+- Add offline process tests for positive registration, early and late authentication failure, owner readiness/death, descendant cleanup, environment scrubbing, and dialog-source constraints.
+
 ## 0.5.0-alpha.1 - 2026-10-13
 
 - Add an experimental standard-I/O MCP adapter using the official Rust MCP SDK.

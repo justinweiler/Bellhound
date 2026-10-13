@@ -1,6 +1,6 @@
 [package]
 name = "bellhound"
-version = "0.5.0-alpha.1"
+version = "0.5.0-alpha.2"
 edition = "2024"
 description = "A line-oriented telephone bridge for interactive AI agents"
 license = "MIT"
