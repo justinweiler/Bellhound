@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import plistlib
 import signal
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -89,6 +90,7 @@ class BoundaryTests(unittest.TestCase):
             self.assertEqual(payload["Label"], "com.justinweiler.bellhound-mcp")
             self.assertEqual(payload["KeepAlive"], {"SuccessfulExit": False})
             self.assertIn("mcp-service-supervisor.py", payload["ProgramArguments"][1])
+            self.assertIn(str(Path(shutil.which("cargo")).parent), payload["EnvironmentVariables"]["PATH"])
             rendered = destination.read_text()
             self.assertNotIn("sk-", rendered)
             self.assertNotIn("BELLHOUND_RELAY_TOKEN", rendered)

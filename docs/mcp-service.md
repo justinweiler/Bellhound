@@ -85,7 +85,7 @@ scripts/mcp-service-macos.sh install
 scripts/mcp-service-macos.sh status
 ```
 
-Installation writes one mode-600 user LaunchAgent at
+Installation first builds the current checkout with `cargo build --release --locked`, then writes one mode-600 user LaunchAgent at
 `~/Library/LaunchAgents/com.justinweiler.bellhound-mcp.plist`, loads it in the
 current GUI domain, and starts it. The service is available after login and is
 restarted when it exits unexpectedly.
