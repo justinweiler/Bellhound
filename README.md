@@ -138,7 +138,7 @@ delay_ms = 500
 mode = "speech"
 sound_url = "https://raw.githubusercontent.com/justinweiler/Bellhound-Sounds/master/bellhound-thinking.mp3"
 text = "Got it. Give me a moment."
-suppress_phrases = ["thank you", "thanks", "bye", "goodbye", "good night", "goodnight", "love you"]
+suppress_phrases = ["thank you", "thanks", "bye", "goodbye", "good night", "goodnight"]
 suppress_for_session_phrases = ["call has been forwarded to an automated voice messaging system", "the person you are trying to reach is not available"]
 ```
 
