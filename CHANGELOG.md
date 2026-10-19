@@ -10,6 +10,7 @@
 - Make the macOS always-on service work from either a source checkout or an extracted prebuilt archive.
 - Verify release checksums, required archive contents, packaged configuration parsing, and packaged executable startup on every release target before publication.
 - Check out the tagged repository in the publication job so `gh release --verify-tag` can validate the Git tag before creating the release.
+- Document that the first checksummed binaries are not yet Apple-notarized or Windows code-signed, so managed machines may require a source build until signed releases are available.
 - Update `rustls` to 0.23.46 before the first binary release, resolving four newly published RustSec advisories in 0.23.45.
 
 ## 0.5.0 - 2026-10-13

@@ -53,6 +53,12 @@ Set-Location $folder
 
 Keep the extracted directory in a stable location if you install the macOS service. Its LaunchAgent records that absolute path.
 
+Bellhound `0.6.0` archives are checksummed but are not yet Apple-notarized or
+Windows code-signed. macOS Gatekeeper or Windows SmartScreen may therefore warn
+about the downloaded executable. Do not disable organization security policy to
+run it; build from source or wait for a signed release when policy requires
+trusted publisher identity.
+
 ### Build from source
 
 Install the stable [Rust toolchain](https://rustup.rs/), then:
