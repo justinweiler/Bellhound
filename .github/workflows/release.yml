@@ -33,6 +33,11 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - run: ${{ matrix.script }}
+      - if: runner.os != 'Windows'
+        run: sh scripts/verify-release-unix.sh dist
+      - if: runner.os == 'Windows'
+        shell: powershell
+        run: scripts/verify-release-windows.ps1 -DistDirectory dist
       - uses: actions/upload-artifact@v7
         with:
           name: bellhound-${{ matrix.target }}

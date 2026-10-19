@@ -18,6 +18,8 @@ agent <-> JSON Lines, blocking CLI, or private MCP <-> Bellhound <-> Telnyx Conv
 
 Bellhound contains no language model and makes no decisions. It translates final speech-to-text frames into deterministic terminal events and translates agent `speak` commands into Telnyx text-to-speech frames. While an agent is thinking, Bellhound can speak a fixed holding phrase or play a short built-in cue so the caller does not hear unexplained silence.
 
+**New installation:** start with [Install Bellhound](INSTALL.md) for the Telnyx account, prebuilt download, secure credential setup, public relay, and first call.
+
 See [Architecture](docs/architecture.md) for the ownership and trust model, [Protocol](docs/protocol.md) for model-neutral integration, [Live setup](docs/live-setup.md) for the Telnyx/tunnel sequence, [MCP integration](docs/mcp.md) for local and hosted MCP clients, and the [conversation canary](docs/conversation-canary.md) for a repeatable human test.
 
 For private always-on use on macOS, see the [MCP service](docs/mcp-service.md). It brokers credentials from Keychain, owns the Bellhound and tunnel process trees, and adds a service watchdog behind the existing Bellhound and carrier call-duration limits.
@@ -78,7 +80,9 @@ Bellhound is ordinary Rust and targets macOS, Linux, and Windows. The WebSocket 
 
 ## Release archives
 
-The release workflow builds native archives for Apple Silicon and Intel macOS, x86-64 Linux, and x86-64 Windows. Each archive contains the binary, license, changelog, and authorship record plus a separate SHA-256 checksum.
+The release workflow builds native archives for Apple Silicon and Intel macOS, x86-64 Linux glibc, and x86-64 Windows. Each archive contains the executable, complete installation guide, example configuration, operational scripts, license, changelog, and authorship record plus a separate SHA-256 checksum. CI extracts every archive, verifies its checksum and required files, and runs the packaged executable before publication.
+
+Download and verification instructions are in [INSTALL.md](INSTALL.md). The Bellhound core is portable; the packaged always-on service installer currently supports macOS.
 
 Package the current Unix target locally with:
 

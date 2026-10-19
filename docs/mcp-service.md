@@ -60,11 +60,17 @@ conversation still ends with explicit hangup and an `ended` event.
 
 ## Validate without installing
 
-Build the current checkout and validate configuration, binaries, profiles, and
-Keychain availability without opening a network connection:
+From a source checkout, build before validating:
 
 ```sh
 cargo build --release --locked
+```
+
+A prebuilt release archive already contains the executable at its root and does
+not require Rust or Cargo. From either layout, validate configuration, binaries,
+profiles, and Keychain availability without opening a network connection:
+
+```sh
 scripts/mcp-service-macos.sh check
 ```
 
@@ -85,10 +91,15 @@ scripts/mcp-service-macos.sh install
 scripts/mcp-service-macos.sh status
 ```
 
-Installation first builds the current checkout with `cargo build --release --locked`, then writes one mode-600 user LaunchAgent at
+Installation builds a source checkout when necessary, or uses the executable at
+the root of a prebuilt release archive. It then writes one mode-600 user LaunchAgent at
 `~/Library/LaunchAgents/com.justinweiler.bellhound-mcp.plist`, loads it in the
 current GUI domain, and starts it. The service is available after login and is
 restarted when it exits unexpectedly.
+
+Keep a prebuilt archive in a stable directory before installing. The LaunchAgent
+records absolute paths. To move or upgrade that directory, uninstall from the old
+directory and install from the new one.
 
 Runtime readiness is recorded at `work/mcp-service/ready.json`. A normal service
 stop removes that ready file and writes `work/mcp-service/receipt.json`.

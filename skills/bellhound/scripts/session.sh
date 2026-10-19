@@ -20,7 +20,13 @@ tunnel_pid_file=$state_dir/tunnel.pid
 owner_log=$state_dir/owner.log
 relay_log=$state_dir/relay.log
 tunnel_log=$state_dir/tunnel.log
-binary=$root/target/release/bellhound
+if [ -n "${BELLHOUND_BINARY:-}" ]; then
+  binary=$BELLHOUND_BINARY
+elif [ -x "$root/target/release/bellhound" ]; then
+  binary=$root/target/release/bellhound
+else
+  binary=$root/bellhound
+fi
 
 require_token() {
   if [ -z "${BELLHOUND_RELAY_TOKEN:-}" ] || [ "${#BELLHOUND_RELAY_TOKEN}" -lt 24 ]; then
@@ -135,7 +141,12 @@ run() {
   trap 'exit 0' HUP INT TERM
   log_owner 'owner started'
 
-  if [ ! -x "$binary" ] || find "$root/src" "$root/Cargo.toml" "$root/Cargo.lock" -newer "$binary" -print -quit | grep -q .; then
+  if [ ! -x "$binary" ]; then
+    echo "Bellhound binary not found or not executable: $binary" >&2
+    exit 1
+  fi
+  if [ -d "$root/src" ] && [ -f "$root/Cargo.toml" ] && [ -f "$root/Cargo.lock" ] && \
+    find "$root/src" "$root/Cargo.toml" "$root/Cargo.lock" -newer "$binary" -print -quit | grep -q .; then
     cargo build --manifest-path "$root/Cargo.toml" --release --locked >&2
   fi
 

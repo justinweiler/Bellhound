@@ -46,6 +46,21 @@ class WatchdogTests(unittest.TestCase):
 
 
 class BoundaryTests(unittest.TestCase):
+    def test_binary_selection_supports_source_and_release_archive_layouts(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            archive_binary = root / "bellhound"
+            archive_binary.touch()
+            self.assertEqual(SERVICE.select_binary(root), archive_binary.resolve())
+
+            source_binary = root / "target/release/bellhound"
+            source_binary.parent.mkdir(parents=True)
+            source_binary.touch()
+            self.assertEqual(SERVICE.select_binary(root), source_binary.resolve())
+
+            explicit = root / "custom-bellhound"
+            self.assertEqual(SERVICE.select_binary(root, explicit), explicit.resolve())
+
     def test_environment_scrub_removes_all_secret_namespaces(self):
         cleaned = SERVICE.clean_environment(
             {

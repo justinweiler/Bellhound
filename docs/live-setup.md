@@ -1,13 +1,23 @@
 # Live setup
 
+This is the detailed operator reference after installation. New operators should begin with the start-to-finish [installation guide](../INSTALL.md).
+
 ## Prerequisites
 
-- A Telnyx trial or paid account.
+- A Telnyx paid or otherwise Programmable-Voice-enabled account. An AI-only Pretrial account must be upgraded before using Bellhound.
 - An owned voice-capable number.
 - A verified destination number while the Telnyx trial restriction applies.
 - An active outbound voice profile.
 - A dedicated Call Control application attached to that profile.
 - A public WSS endpoint forwarding to Bellhound's loopback listener.
+
+Telnyx Call Control applications require a primary webhook URL. Use the HTTPS form of the same stable relay host:
+
+```text
+https://host.example/webhooks/telnyx/<token>
+```
+
+If a temporary tunnel changes hostname, update both this webhook URL and `telnyx.public_wss_base` before dialing.
 
 ## Credentials
 

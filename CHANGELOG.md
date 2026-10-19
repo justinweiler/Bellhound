@@ -6,6 +6,10 @@
 - Broker the OpenAI tunnel key and Bellhound relay token from Keychain without persisting secret values in service configuration.
 - Allow the existing Bellhound foreground owner to run without a fixed session deadline when it is supervised as a service.
 - Validate call-duration limits between 30 and 3600 seconds and add a service watchdog at the configured limit plus five seconds, behind the existing Telnyx carrier limit and Bellhound relay hangup timer.
+- Add a start-to-finish installation guide covering Telnyx account preparation, prebuilt archives, secure credentials, relay exposure, Call Control configuration, the first call, and agent integration.
+- Make the macOS always-on service work from either a source checkout or an extracted prebuilt archive.
+- Verify release checksums, required archive contents, packaged configuration parsing, and packaged executable startup on every release target before publication.
+- Update `rustls` to 0.23.46 before the first binary release, resolving four newly published RustSec advisories in 0.23.45.
 
 ## 0.5.0 - 2026-10-13
 

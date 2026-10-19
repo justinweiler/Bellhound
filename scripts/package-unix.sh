@@ -11,7 +11,7 @@ trap 'rm -rf "$stage"' EXIT HUP INT TERM
 cargo build --release --locked --target "$target"
 mkdir -p "$output_dir" "$stage/$archive_name"
 cp "target/$target/release/bellhound" "$stage/$archive_name/"
-cp README.md AUTHORS.md LICENSE CHANGELOG.md "$stage/$archive_name/"
+cp README.md INSTALL.md AUTHORS.md LICENSE CHANGELOG.md "$stage/$archive_name/"
 cp bellhound.example.toml "$stage/$archive_name/"
 cp -R assets docs scripts skills "$stage/$archive_name/"
 tar -C "$stage" -czf "$output_dir/$archive_name.tar.gz" "$archive_name"

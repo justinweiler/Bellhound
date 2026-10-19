@@ -321,11 +321,20 @@ def write_json(path: Path, value: dict[str, object]) -> None:
     os.chmod(path, 0o600)
 
 
+def select_binary(root: Path, explicit: Path | None = None) -> Path:
+    if explicit is not None:
+        return explicit.resolve()
+    source_binary = root / "target/release/bellhound"
+    archive_binary = root / "bellhound"
+    return (source_binary if source_binary.is_file() else archive_binary).resolve()
+
+
 def parse_args() -> argparse.Namespace:
     root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--root", type=Path, default=root)
+    parser.add_argument("--binary", type=Path)
     parser.add_argument("--base-config", type=Path)
     parser.add_argument("--profile-dir", type=Path, default=Path.home() / ".config/tunnel-client")
     parser.add_argument("--profile", default="bellhound")
@@ -340,7 +349,7 @@ def parse_args() -> argparse.Namespace:
     args.root = args.root.resolve()
     args.base_config = (args.base_config or args.root / "work/bellhound-keychain.toml").resolve()
     args.state_dir = (args.state_dir or args.root / "work/mcp-service").resolve()
-    args.binary = args.root / "target/release/bellhound"
+    args.binary = select_binary(args.root, args.binary)
     args.runtime_config = args.root / "work/session/bellhound.toml"
     args.session_script = args.root / "skills/bellhound/scripts/session.sh"
     return args

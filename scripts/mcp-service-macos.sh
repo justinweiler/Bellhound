@@ -12,8 +12,12 @@ plist=$launch_agents/$label.plist
 state_dir=$root/work/mcp-service
 supervisor=$root/scripts/mcp-service-supervisor.py
 python=$(command -v python3)
-cargo=$(command -v cargo)
-cargo_dir=$(dirname "$cargo")
+cargo=$(command -v cargo || true)
+if [ -n "$cargo" ]; then
+  cargo_dir=$(dirname "$cargo")
+else
+  cargo_dir=''
+fi
 
 render_plist() {
   mkdir -p "$launch_agents" "$state_dir"
@@ -33,7 +37,7 @@ payload = {
     "ProcessType": "Background",
     "ThrottleInterval": 10,
     "EnvironmentVariables": {
-        "PATH": f"{cargo_dir}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        "PATH": ":".join(filter(None, [cargo_dir, "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]))
     },
     "StandardOutPath": str(Path(state) / "launchd.out.log"),
     "StandardErrorPath": str(Path(state) / "launchd.err.log"),
@@ -54,7 +58,13 @@ case "${1:-}" in
     printf '%s\n' "$plist"
     ;;
   install)
-    "$cargo" build --manifest-path "$root/Cargo.toml" --release --locked
+    if [ -d "$root/src" ] && [ -f "$root/Cargo.toml" ]; then
+      [ -n "$cargo" ] || { echo 'cargo is required when installing from a source checkout' >&2; exit 1; }
+      "$cargo" build --manifest-path "$root/Cargo.toml" --release --locked
+    elif [ ! -x "$root/bellhound" ]; then
+      echo 'prebuilt Bellhound binary not found at the archive root' >&2
+      exit 1
+    fi
     "$python" "$supervisor" --root "$root" --check >/dev/null
     render_plist
     launchctl bootout "$domain/$label" >/dev/null 2>&1 || true
