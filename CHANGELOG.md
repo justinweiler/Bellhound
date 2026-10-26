@@ -6,6 +6,7 @@
 - Request interim STT results and treat partial caller speech as active continuation, preventing the holding acknowledgement from talking over a resumed sentence.
 - Raise the default continuation window from 2500 to 4000 ms after a live three-second-pause canary proved the earlier boundary still committed too soon.
 - Report a conservative TTS playback estimate and make MCP hangup fail closed while speech may still be playing, preventing a farewell from being cut off.
+- Pass a live acceptance canary that merged speech across a deliberate three-second pause without a mid-pause acknowledgement, completed the full final TTS reply before hangup, and returned to a clean idle service state.
 - Refresh compatible `ctutils`, `rustls-webpki`, `webpki-roots`, and Tokio lockfile versions to clear advisories published after 0.6.0.
 
 ## 0.6.0 - 2026-10-13
