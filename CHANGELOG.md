@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1 - 2026-10-26
+
+- Clear an expired pending call opening when reporting relay status, allowing MCP dialing to recover automatically after a pre-setup call failure while retaining the bounded duplicate-dial guard.
+- Request interim STT results and treat partial caller speech as active continuation, preventing the holding acknowledgement from talking over a resumed sentence.
+- Report a conservative TTS playback estimate and make MCP hangup fail closed while speech may still be playing, preventing a farewell from being cut off.
+- Refresh compatible `ctutils`, `rustls-webpki`, `webpki-roots`, and Tokio lockfile versions to clear advisories published after 0.6.0.
+
 ## 0.6.0 - 2026-10-13
 
 - Add a macOS user-service supervisor and LaunchAgent installer for always-on private MCP availability.

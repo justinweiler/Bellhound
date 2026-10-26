@@ -18,7 +18,7 @@ Every event is one JSON object with these common fields:
 
 The current event names are `ready`, `connected`, `setup`, `utterance`, `interrupted`, `dtmf`, `acknowledged`, `acknowledgement_audio_fetched`, `spoken`, `pong`, `ended`, `transport`, `call_status`, and `error`.
 
-Bellhound merges closely spaced final transcript fragments after a configurable quiet window. Interim STT frames extend that window even when partial transcripts are not emitted. The resulting final `utterance` contains one `sequence` and a `fragment_count`.
+Bellhound requests interim STT results and merges closely spaced final transcript fragments after a configurable quiet window. Interim frames are retained as caller activity even when partial transcripts are not emitted: they extend or reopen the continuation buffer, suppress the holding acknowledgement, and make a reply to the earlier fragment stale. The resulting final `utterance` contains one `sequence` and a `fragment_count`.
 
 With acknowledgements enabled, Bellhound starts a configurable grace timer after the merged final utterance. A matching `speak` command received during that grace period cancels it. Configured short social, closing, and voicemail phrases suppress the acknowledgement. In the default speech mode Bellhound sends the fixed phrase and emits:
 
@@ -29,8 +29,15 @@ With acknowledgements enabled, Bellhound starts a configurable grace timer after
 The eventual agent reply remains a normal `spoken` event with additive timing fields:
 
 ```json
-{"event":"spoken","text":"I checked it. The deployment is healthy.","responding_to_sequence":4,"response_latency_ms":16220,"acknowledgement_preceded":true}
+{"event":"spoken","text":"I checked it. The deployment is healthy.","responding_to_sequence":4,"response_latency_ms":16220,"playback_remaining_ms":9550,"acknowledgement_preceded":true}
 ```
+
+`spoken` confirms that Bellhound dispatched the text frame; Conversation Relay
+does not send a TTS-complete WebSocket frame. `playback_remaining_ms` is a
+conservative word-rate estimate for the queued speech. MCP clients must keep
+waiting for caller activity during that interval and require status
+`speech_playback_pending_ms = 0` before hangup. A caller prompt or interruption
+clears the estimate immediately.
 
 Sound mode uses a configured public `sound_url` or Bellhound's authenticated embedded-audio URL. Conversation Relay receives a `play` frame that is both interruptible by the caller and preemptible by the agent response. A fetch of the embedded asset emits `acknowledgement_audio_fetched`, allowing operators to distinguish dispatch from media retrieval without logging the secret URL. `speech` mode and the `speech_fallback` path include the configured `text` field in the event. The acknowledgement is deterministic transport behavior. It does not reason, answer the caller, or replace the originating agent.
 

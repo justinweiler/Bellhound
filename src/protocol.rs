@@ -50,6 +50,7 @@ pub enum AgentEvent {
         responding_to_sequence: Option<u64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         response_latency_ms: Option<u64>,
+        playback_remaining_ms: u64,
         #[serde(default, skip_serializing_if = "is_false")]
         acknowledgement_preceded: bool,
     },

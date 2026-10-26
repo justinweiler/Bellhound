@@ -33,6 +33,9 @@ use crate::{
 
 const THINKING_SOUND: &[u8] = include_bytes!("../assets/bellhound-thinking.mp3");
 const COMMAND_ID_CACHE_CAPACITY: usize = 256;
+const TTS_WORDS_PER_MINUTE: u64 = 150;
+const TTS_PLAYBACK_BUFFER_MS: u64 = 750;
+const MAX_TTS_PLAYBACK_ESTIMATE_MS: u64 = 30_000;
 
 #[derive(Clone)]
 struct AppState {
@@ -43,6 +46,7 @@ struct AppState {
     active_session: Arc<Mutex<Option<String>>>,
     active_call_control_id: Arc<StdMutex<Option<String>>>,
     pending_opening: Arc<StdMutex<Option<PendingOpening>>>,
+    speech_playback_until: Arc<StdMutex<Option<Instant>>>,
     command_ids: Arc<StdMutex<CommandIdCache>>,
 }
 
@@ -77,6 +81,65 @@ struct PendingOpening {
     expires_at: Instant,
 }
 
+fn opening_is_pending(opening: &mut Option<PendingOpening>, now: Instant) -> bool {
+    if opening
+        .as_ref()
+        .is_some_and(|candidate| candidate.expires_at > now)
+    {
+        true
+    } else {
+        *opening = None;
+        false
+    }
+}
+
+fn estimated_speech_playback(text: &str) -> Duration {
+    let words = text.split_whitespace().count().max(1) as u64;
+    let spoken_ms = words.saturating_mul(60_000).div_ceil(TTS_WORDS_PER_MINUTE);
+    Duration::from_millis(
+        spoken_ms
+            .saturating_add(TTS_PLAYBACK_BUFFER_MS)
+            .clamp(1_000, MAX_TTS_PLAYBACK_ESTIMATE_MS),
+    )
+}
+
+fn mark_speech_playback(state: &AppState, text: &str) -> u64 {
+    let now = Instant::now();
+    let duration = estimated_speech_playback(text);
+    let Ok(mut current) = state.speech_playback_until.lock() else {
+        return duration.as_millis().min(u128::from(u64::MAX)) as u64;
+    };
+    let starts_at = current
+        .as_ref()
+        .copied()
+        .filter(|deadline| *deadline > now)
+        .unwrap_or(now);
+    let deadline = starts_at + duration;
+    *current = Some(deadline);
+    elapsed_millis(deadline.saturating_duration_since(now))
+}
+
+fn clear_speech_playback(state: &AppState) {
+    if let Ok(mut current) = state.speech_playback_until.lock() {
+        *current = None;
+    }
+}
+
+fn speech_playback_pending_ms(state: &AppState) -> u64 {
+    let now = Instant::now();
+    let Ok(mut current) = state.speech_playback_until.lock() else {
+        return 0;
+    };
+    let Some(deadline) = *current else {
+        return 0;
+    };
+    if deadline <= now {
+        *current = None;
+        return 0;
+    }
+    elapsed_millis(deadline.saturating_duration_since(now))
+}
+
 struct PendingTurn {
     sequence: u64,
     received_at: Instant,
@@ -95,10 +158,16 @@ struct FinalUtteranceFragment {
     language: Option<String>,
 }
 
+struct PartialUtteranceFragment {
+    text: String,
+    language: Option<String>,
+}
+
 #[derive(Default)]
 struct FrameOutcome {
     opening: Option<String>,
     final_fragment: Option<FinalUtteranceFragment>,
+    partial_fragment: Option<PartialUtteranceFragment>,
     prompt_activity: bool,
 }
 
@@ -139,6 +208,7 @@ pub async fn run(config: Config) -> Result<()> {
         active_session: Arc::new(Mutex::new(None)),
         active_call_control_id: Arc::new(StdMutex::new(None)),
         pending_opening: Arc::new(StdMutex::new(None)),
+        speech_playback_until: Arc::new(StdMutex::new(None)),
         command_ids: Arc::new(StdMutex::new(CommandIdCache::default())),
     };
     let app = Router::new()
@@ -225,6 +295,7 @@ struct ControlStatusResponse {
     version: &'static str,
     active_call: bool,
     opening_pending: bool,
+    speech_playback_pending_ms: u64,
     oldest_event_id: Option<u64>,
     latest_event_id: Option<u64>,
 }
@@ -238,11 +309,13 @@ async fn control_status(State(state): State<AppState>, headers: HeaderMap) -> Re
     let opening_pending = state
         .pending_opening
         .lock()
-        .is_ok_and(|opening| opening.is_some());
+        .is_ok_and(|mut opening| opening_is_pending(&mut opening, Instant::now()));
+    let speech_playback_pending_ms = speech_playback_pending_ms(&state);
     Json(ControlStatusResponse {
         version: env!("CARGO_PKG_VERSION"),
         active_call,
         opening_pending,
+        speech_playback_pending_ms,
         oldest_event_id: history.oldest_event_id,
         latest_event_id: history.latest_event_id,
     })
@@ -606,6 +679,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                             end_reason = "send_failed".to_owned();
                             break;
                         }
+                        let playback_remaining_ms = mark_speech_playback(&state, &text);
                         state.sink.send(AgentEvent::Spoken {
                             session_id: session_id.clone(),
                             text,
@@ -613,6 +687,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                             response_latency_ms: response.as_ref().map(|turn| {
                                 elapsed_millis(turn.received_at.elapsed())
                             }),
+                            playback_remaining_ms,
                             acknowledgement_preceded: response
                                 .is_some_and(|turn| turn.acknowledgement_sent),
                         });
@@ -658,11 +733,13 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                                 end_reason = "opening_send_failed".to_owned();
                                 break;
                             }
+                            let playback_remaining_ms = mark_speech_playback(&state, &opening);
                             state.sink.send(AgentEvent::Spoken {
                                 session_id: session_id.clone(),
                                 text: opening,
                                 responding_to_sequence: None,
                                 response_latency_ms: None,
+                                playback_remaining_ms,
                                 acknowledgement_preceded: false,
                             });
                         }
@@ -689,6 +766,23 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                                 incoming_generation,
                                 state.config.relay.continuation_window_ms,
                             );
+                        } else if let Some(fragment) = outcome.partial_fragment {
+                            incoming_generation = incoming_generation.saturating_add(1);
+                            match pending_incoming_turn.as_mut() {
+                                Some(turn) => {
+                                    turn.generation = incoming_generation;
+                                    turn.text = merge_transcript_fragments(&turn.text, &fragment.text);
+                                    turn.language = fragment.language.or_else(|| turn.language.clone());
+                                }
+                                None => {
+                                    pending_incoming_turn = Some(PendingIncomingTurn {
+                                        generation: incoming_generation,
+                                        text: fragment.text,
+                                        language: fragment.language,
+                                        fragment_count: 0,
+                                    });
+                                }
+                            }
                         } else if outcome.prompt_activity
                             && let Some(turn) = pending_incoming_turn.as_mut()
                         {
@@ -776,7 +870,10 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                 let Some(turn) = pending_turn.as_mut() else {
                     continue;
                 };
-                if turn.sequence != due_sequence || turn.acknowledgement_sent {
+                if turn.sequence != due_sequence
+                    || turn.acknowledgement_sent
+                    || pending_incoming_turn.is_some()
+                {
                     continue;
                 }
                 let text = state.config.acknowledgement.text.clone();
@@ -796,6 +893,9 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                 if ws_sender.send(Message::Text(frame.to_string().into())).await.is_err() {
                     end_reason = "acknowledgement_send_failed".to_owned();
                     break;
+                }
+                if spoken_text.is_some() {
+                    mark_speech_playback(&state, &text);
                 }
                 turn.acknowledgement_sent = true;
                 state.sink.send(AgentEvent::Acknowledged {
@@ -821,6 +921,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     if let Ok(mut opening) = state.pending_opening.lock() {
         *opening = None;
     }
+    clear_speech_playback(&state);
     state.sink.send(AgentEvent::Ended {
         session_id,
         reason: end_reason,
@@ -860,6 +961,7 @@ fn handle_telnyx_text(
     match frame.kind.as_str() {
         "prompt" => {
             outcome.prompt_activity = true;
+            clear_speech_playback(state);
             let final_utterance = frame.last.unwrap_or(false);
             let text = frame.voice_prompt.unwrap_or_default();
             if final_utterance {
@@ -869,21 +971,30 @@ fn handle_telnyx_text(
                         language: frame.lang,
                     });
                 }
-            } else if state.config.relay.emit_partial_transcripts {
-                *sequence += 1;
-                state.sink.send(AgentEvent::Utterance {
-                    session_id: session_id.to_owned(),
-                    sequence: *sequence,
-                    text,
-                    language: frame.lang,
-                    final_utterance: false,
-                    fragment_count: 1,
+            } else if !text.trim().is_empty() {
+                outcome.partial_fragment = Some(PartialUtteranceFragment {
+                    text: text.clone(),
+                    language: frame.lang.clone(),
                 });
+                if state.config.relay.emit_partial_transcripts {
+                    *sequence += 1;
+                    state.sink.send(AgentEvent::Utterance {
+                        session_id: session_id.to_owned(),
+                        sequence: *sequence,
+                        text,
+                        language: frame.lang,
+                        final_utterance: false,
+                        fragment_count: 1,
+                    });
+                }
             }
         }
-        "interrupt" => state.sink.send(AgentEvent::Interrupted {
-            session_id: session_id.to_owned(),
-        }),
+        "interrupt" => {
+            clear_speech_playback(state);
+            state.sink.send(AgentEvent::Interrupted {
+                session_id: session_id.to_owned(),
+            });
+        }
         "dtmf" => state.sink.send(AgentEvent::Dtmf {
             session_id: session_id.to_owned(),
             digit: frame.digit.unwrap_or_default(),
@@ -950,7 +1061,31 @@ fn merge_transcript_fragments(current: &str, next: &str) -> String {
         return current.to_owned();
     }
 
+    let current_words = current.split_whitespace().collect::<Vec<_>>();
+    let next_words = next.split_whitespace().collect::<Vec<_>>();
+    for overlap in (1..=current_words.len().min(next_words.len())).rev() {
+        let current_suffix = &current_words[current_words.len() - overlap..];
+        let next_prefix = &next_words[..overlap];
+        if current_suffix
+            .iter()
+            .zip(next_prefix)
+            .all(|(left, right)| transcript_word_eq(left, right))
+        {
+            let remainder = next_words[overlap..].join(" ");
+            return if remainder.is_empty() {
+                current.to_owned()
+            } else {
+                format!("{current} {remainder}")
+            };
+        }
+    }
+
     format!("{current} {next}")
+}
+
+fn transcript_word_eq(left: &str, right: &str) -> bool {
+    left.trim_matches(|character: char| !character.is_alphanumeric())
+        .eq_ignore_ascii_case(right.trim_matches(|character: char| !character.is_alphanumeric()))
 }
 
 fn should_acknowledge(config: &Config, text: &str) -> bool {
@@ -1067,6 +1202,53 @@ mod tests {
     use super::*;
 
     #[test]
+    fn expired_pending_opening_is_cleared_from_status() {
+        let mut opening = Some(PendingOpening {
+            text: "stale opening".to_owned(),
+            expires_at: Instant::now() - Duration::from_secs(1),
+        });
+        assert!(!opening_is_pending(&mut opening, Instant::now()));
+        assert!(opening.is_none());
+
+        let mut opening = Some(PendingOpening {
+            text: "live opening".to_owned(),
+            expires_at: Instant::now() + Duration::from_secs(1),
+        });
+        assert!(opening_is_pending(&mut opening, Instant::now()));
+        assert!(opening.is_some());
+    }
+
+    #[test]
+    fn speech_playback_estimate_prevents_immediate_farewell_hangup() {
+        let duration = estimated_speech_playback(
+            "I found the problem and repaired it, so this final sentence should finish before hangup.",
+        );
+        assert!(duration >= Duration::from_secs(5));
+        assert!(duration <= Duration::from_secs(30));
+    }
+
+    #[test]
+    fn playback_status_clears_after_caller_activity() {
+        let (sink, _writer) = crate::output::channel();
+        let (commands, _) = broadcast::channel(4);
+        let state = AppState {
+            token: "abcdefghijklmnopqrstuvwxyz".into(),
+            config: Config::default(),
+            sink,
+            commands,
+            active_session: Arc::new(Mutex::new(None)),
+            active_call_control_id: Arc::new(StdMutex::new(None)),
+            pending_opening: Arc::new(StdMutex::new(None)),
+            speech_playback_until: Arc::new(StdMutex::new(None)),
+            command_ids: Arc::new(StdMutex::new(CommandIdCache::default())),
+        };
+        assert!(mark_speech_playback(&state, "This sentence is still playing.") > 0);
+        assert!(speech_playback_pending_ms(&state) > 0);
+        clear_speech_playback(&state);
+        assert_eq!(speech_playback_pending_ms(&state), 0);
+    }
+
+    #[test]
     fn final_prompt_becomes_bufferable_fragment() {
         let (sink, _writer) = crate::output::channel();
         let (commands, _) = broadcast::channel(4);
@@ -1078,6 +1260,7 @@ mod tests {
             active_session: Arc::new(Mutex::new(None)),
             active_call_control_id: Arc::new(StdMutex::new(None)),
             pending_opening: Arc::new(StdMutex::new(None)),
+            speech_playback_until: Arc::new(StdMutex::new(None)),
             command_ids: Arc::new(StdMutex::new(CommandIdCache::default())),
         };
         let mut sequence = 0;
@@ -1089,6 +1272,35 @@ mod tests {
         );
         let fragment = outcome.final_fragment.expect("expected final fragment");
         assert_eq!(fragment.text, "hello");
+        assert_eq!(fragment.language.as_deref(), Some("en"));
+        assert!(outcome.prompt_activity);
+        assert_eq!(sequence, 0);
+    }
+
+    #[test]
+    fn partial_prompt_is_retained_as_internal_caller_activity() {
+        let (sink, _writer) = crate::output::channel();
+        let (commands, _) = broadcast::channel(4);
+        let state = AppState {
+            token: "abcdefghijklmnopqrstuvwxyz".into(),
+            config: Config::default(),
+            sink,
+            commands,
+            active_session: Arc::new(Mutex::new(None)),
+            active_call_control_id: Arc::new(StdMutex::new(None)),
+            pending_opening: Arc::new(StdMutex::new(None)),
+            speech_playback_until: Arc::new(StdMutex::new(None)),
+            command_ids: Arc::new(StdMutex::new(CommandIdCache::default())),
+        };
+        let mut sequence = 0;
+        let outcome = handle_telnyx_text(
+            &state,
+            "session-1",
+            &mut sequence,
+            r#"{"type":"prompt","voicePrompt":"I am still talking","lang":"en","last":false}"#,
+        );
+        let fragment = outcome.partial_fragment.expect("expected partial fragment");
+        assert_eq!(fragment.text, "I am still talking");
         assert_eq!(fragment.language.as_deref(), Some("en"));
         assert!(outcome.prompt_activity);
         assert_eq!(sequence, 0);
@@ -1107,6 +1319,10 @@ mod tests {
         assert_eq!(
             merge_transcript_fragments("please check the monitor", "the monitor"),
             "please check the monitor"
+        );
+        assert_eq!(
+            merge_transcript_fragments("Please check one more", "one more thing."),
+            "Please check one more thing."
         );
     }
 
@@ -1145,6 +1361,7 @@ mod tests {
             active_session: Arc::new(Mutex::new(None)),
             active_call_control_id: Arc::new(StdMutex::new(None)),
             pending_opening: Arc::new(StdMutex::new(None)),
+            speech_playback_until: Arc::new(StdMutex::new(None)),
             command_ids: Arc::new(StdMutex::new(CommandIdCache::default())),
         };
         let mut sequence = 0;

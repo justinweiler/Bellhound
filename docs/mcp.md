@@ -59,11 +59,11 @@ The adapter exposes five focused tools:
 
 | Tool | Effect |
 |---|---|
-| `bellhound_status` | Read relay reachability, active-call state, and retained-event bounds. |
+| `bellhound_status` | Read relay reachability, active-call state, retained-event bounds, and estimated pending TTS playback. |
 | `bellhound_dial` | Call the single destination fixed in private Bellhound configuration and return the starting event cursor. |
 | `bellhound_wait` | Wait up to 30 seconds and return an ordered batch of at most 32 redacted events after a cursor. |
 | `bellhound_speak` | Speak to one exact unanswered utterance sequence. |
-| `bellhound_hangup` | End the active call with a short machine-readable reason. |
+| `bellhound_hangup` | End the active call after estimated TTS playback reaches zero. |
 
 `dial`, `speak`, and `hangup` require a fresh UUID `request_id`. Dial forwards
 that UUID to Telnyx as its command ID. The relay keeps the latest 256 MCP
@@ -83,7 +83,7 @@ needs.
 3. Call `bellhound_wait` with the saved cursor. Advance to every returned `next_cursor`.
 4. On `utterance`, reason and use ordinary tools in the originating session. Call `bellhound_speak` with that event's exact `sequence` and a fresh UUID.
 5. If Bellhound reports `stale_response`, wait again and reassess the newest caller turn.
-6. Call `bellhound_hangup` with a fresh UUID, wait for `ended`, and verify that the Bellhound runtime and telephone leg stop.
+6. After a final `spoken`, wait for at least `playback_remaining_ms` while watching for caller events. Require `bellhound_status.speech_playback_pending_ms=0`, then call `bellhound_hangup` with a fresh UUID, wait for `ended`, and verify that the telephone leg is inactive. Leave an installed always-on service running.
 
 A wait timeout is not a failure. It returns the same cursor and lets the client
 issue another bounded wait. An `event_history_gap` is explicit and must never be

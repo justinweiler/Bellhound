@@ -14,7 +14,7 @@ Keep the reasoning and tool use in the current session. Bellhound supplies telep
 3. Use the returned runtime config and event cursor to dial with a concise introduction that identifies the calling agent and the concrete reason for calling.
 4. Block with `bellhound wait --after <cursor>`. Advance the cursor for every event. Respond to final `utterance` events from this same session with `bellhound speak --responding-to <sequence>`. Treat `stale_response` as a request to drain newer events and reconsider the reply.
 5. Perform ordinary authorized tool work between telephone turns when the caller requests it. Report the actual result over the call.
-6. Send `bellhound hangup` when the conversation ends, verify an `ended` event, and run `scripts/session.sh stop`. Confirm the foreground owner exits and final status reports all three processes stopped.
+6. A `spoken` event means TTS was dispatched, not necessarily heard in full. Before hangup, call `bellhound_wait` for at least the event's `playback_remaining_ms` while watching for a caller interruption or new utterance. Require `bellhound_status.speech_playback_pending_ms` to reach zero, then send `bellhound hangup`, verify an `ended` event, and run `scripts/session.sh stop` only for an on-demand runtime. Confirm the foreground owner exits and final status reports all three processes stopped. An installed always-on service remains running and should finish with `active_call=false` and `opening_pending=false`.
 
 ## Boundaries
 

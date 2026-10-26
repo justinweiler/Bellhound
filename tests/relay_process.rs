@@ -43,7 +43,7 @@ max_speak_chars = 2000
 
 [acknowledgement]
 enabled = true
-delay_ms = 300
+delay_ms = 500
 mode = "speech"
 text = "Got it. Give me a moment."
 "#
@@ -88,6 +88,7 @@ text = "Got it. Give me a moment."
     let opening_spoken = read_event(&mut stdout);
     assert_eq!(opening_spoken["event"], "spoken");
     assert_eq!(opening_spoken["responding_to_sequence"], Value::Null);
+    assert!(opening_spoken["playback_remaining_ms"].as_u64().unwrap() >= 1_000);
 
     let waiter = Command::new(env!("CARGO_BIN_EXE_bellhound"))
         .args([
@@ -148,6 +149,7 @@ text = "Got it. Give me a moment."
     assert_eq!(spoken["event"], "spoken");
     assert_eq!(spoken["responding_to_sequence"], 1);
     assert_eq!(spoken["acknowledgement_preceded"], Value::Null);
+    assert!(spoken["playback_remaining_ms"].as_u64().unwrap() >= 1_000);
 
     let spoken_event_id = spoken["event_id"].as_u64().unwrap().to_string();
     let no_acknowledgement = Command::new(env!("CARGO_BIN_EXE_bellhound"))
@@ -169,6 +171,58 @@ text = "Got it. Give me a moment."
 
     websocket
         .send(Message::Text(
+            r#"{"type":"prompt","voicePrompt":"I am pausing","lang":"en","last":true}"#.into(),
+        ))
+        .unwrap();
+    let premature_turn = read_event(&mut stdout);
+    assert_eq!(premature_turn["event"], "utterance");
+    assert_eq!(premature_turn["sequence"], 2);
+    websocket
+        .send(Message::Text(
+            r#"{"type":"prompt","voicePrompt":"I am pausing but still talking","lang":"en","last":false}"#
+                .into(),
+        ))
+        .unwrap();
+    assert_wait_timeout(
+        &config_path,
+        token,
+        premature_turn["event_id"].as_u64().unwrap(),
+    );
+    websocket
+        .send(Message::Text(
+            r#"{"type":"prompt","voicePrompt":"I am pausing but still talking now.","lang":"en","last":true}"#
+                .into(),
+        ))
+        .unwrap();
+    let resumed_turn = read_event(&mut stdout);
+    assert_eq!(resumed_turn["event"], "utterance");
+    assert_eq!(resumed_turn["sequence"], 3);
+    assert_eq!(resumed_turn["text"], "I am pausing but still talking now.");
+    let resumed_reply = Command::new(env!("CARGO_BIN_EXE_bellhound"))
+        .args([
+            "--config",
+            config_path.to_str().unwrap(),
+            "speak",
+            "I waited for the resumed sentence.",
+            "--responding-to",
+            "3",
+        ])
+        .env("BELLHOUND_RELAY_TOKEN", token)
+        .output()
+        .unwrap();
+    assert!(resumed_reply.status.success());
+    let outbound = websocket.read().unwrap();
+    let Message::Text(outbound) = outbound else {
+        panic!("expected the resumed-turn reply frame");
+    };
+    let outbound: Value = serde_json::from_str(outbound.as_str()).unwrap();
+    assert_eq!(outbound["token"], "I waited for the resumed sentence.");
+    let resumed_spoken = read_event(&mut stdout);
+    assert_eq!(resumed_spoken["event"], "spoken");
+    assert_eq!(resumed_spoken["responding_to_sequence"], 3);
+
+    websocket
+        .send(Message::Text(
             r#"{"type":"prompt","voicePrompt":"Please check","lang":"en","last":true}"#.into(),
         ))
         .unwrap();
@@ -186,7 +240,7 @@ text = "Got it. Give me a moment."
         .unwrap();
     let second_utterance = read_event(&mut stdout);
     assert_eq!(second_utterance["event"], "utterance");
-    assert_eq!(second_utterance["sequence"], 2);
+    assert_eq!(second_utterance["sequence"], 4);
     assert_eq!(second_utterance["text"], "Please check one more thing.");
     assert_eq!(second_utterance["fragment_count"], 2);
 
@@ -199,7 +253,7 @@ text = "Got it. Give me a moment."
     assert_eq!(outbound["token"], "Got it. Give me a moment.");
     let acknowledged = read_event(&mut stdout);
     assert_eq!(acknowledged["event"], "acknowledged");
-    assert_eq!(acknowledged["responding_to_sequence"], 2);
+    assert_eq!(acknowledged["responding_to_sequence"], 4);
     assert_eq!(acknowledged["mode"], "speech");
     assert_eq!(acknowledged["text"], "Got it. Give me a moment.");
     assert!(acknowledged["response_latency_ms"].as_u64().unwrap() >= 250);
@@ -243,7 +297,7 @@ text = "Got it. Give me a moment."
             "speak",
             "The second check passed too.",
             "--responding-to",
-            "2",
+            "4",
         ])
         .env("BELLHOUND_RELAY_TOKEN", token)
         .output()
@@ -257,7 +311,7 @@ text = "Got it. Give me a moment."
     assert_eq!(outbound["token"], "The second check passed too.");
     let spoken = read_event(&mut stdout);
     assert_eq!(spoken["event"], "spoken");
-    assert_eq!(spoken["responding_to_sequence"], 2);
+    assert_eq!(spoken["responding_to_sequence"], 4);
     assert_eq!(spoken["acknowledgement_preceded"], true);
     assert!(spoken["response_latency_ms"].as_u64().unwrap() >= 250);
 

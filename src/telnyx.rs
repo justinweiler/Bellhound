@@ -31,6 +31,7 @@ struct ConversationRelayConfig<'a> {
 #[derive(Serialize)]
 struct TranscriptionConfig<'a> {
     transcription_model: &'a str,
+    interim_results: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -91,6 +92,7 @@ async fn dial_with_command_id(config: &Config, command_id: Uuid, emit_result: bo
             transcription_engine: &telnyx.transcription_engine,
             transcription_engine_config: TranscriptionConfig {
                 transcription_model: &telnyx.transcription_model,
+                interim_results: true,
             },
             dtmf_detection: true,
             interruptible: "speech",
@@ -179,6 +181,16 @@ fn sanitize_error(body: &str, secrets: &[&str]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transcription_config_enables_interim_activity_frames() {
+        let value = serde_json::to_value(TranscriptionConfig {
+            transcription_model: "deepgram/nova-3",
+            interim_results: true,
+        })
+        .unwrap();
+        assert_eq!(value["interim_results"], true);
+    }
 
     #[test]
     fn error_sanitizer_is_bounded_and_single_line() {

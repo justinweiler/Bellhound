@@ -83,6 +83,7 @@ pub async fn run(config: Config, script: PathBuf) -> Result<()> {
                     text,
                     responding_to_sequence: Some(sequence),
                     response_latency_ms: None,
+                    playback_remaining_ms: 0,
                     acknowledgement_preceded: false,
                 });
                 match prompts.next() {

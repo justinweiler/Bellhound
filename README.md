@@ -26,7 +26,10 @@ For private always-on use on macOS, see the [MCP service](docs/mcp-service.md). 
 
 ## Status
 
-Version `0.6.0` preserves the proven local workflow and adds:
+Version `0.6.1` preserves the proven local workflow, recovers automatically when
+a failed pre-setup call leaves an expired opening reservation behind, uses interim
+STT activity to avoid acknowledging a resumed sentence, and prevents MCP hangup
+while the final TTS response may still be playing. Version `0.6.0` added:
 
 - a standard-I/O MCP server built with the official Rust MCP SDK;
 - focused `status`, `dial`, cursor-batched `wait`, sequence-targeted `speak`, and `hangup` tools;
@@ -186,7 +189,7 @@ The agent sends commands on stdin:
 ```
 
 Other events include `ready`, `connected`, `interrupted`, `dtmf`, `acknowledged`, `acknowledgement_audio_fetched`, `spoken`, `pong`, `ended`, `transport`, and `error`.
-Every event carries `emitted_at_unix_ms`. Acknowledgements identify their `sound`, `speech`, or `speech_fallback` mode, the utterance sequence, and dispatch latency. Agent `spoken` events include the same sequence, total response latency, and whether an acknowledgement preceded the answer.
+Every event carries `emitted_at_unix_ms`. Acknowledgements identify their `sound`, `speech`, or `speech_fallback` mode, the utterance sequence, and dispatch latency. Agent `spoken` events include the same sequence, total response latency, whether an acknowledgement preceded the answer, and a conservative `playback_remaining_ms` estimate. MCP hangup refuses to cut off that playback window; agents should continue waiting for caller interruption or for status to report `speech_playback_pending_ms = 0` before ending the call.
 
 Models that cannot hold a PTY can use the blocking CLI adapter. `wait` returns immediately for a retained event or sleeps until the next event arrives:
 
