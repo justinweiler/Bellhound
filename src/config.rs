@@ -110,7 +110,7 @@ impl Default for RelayConfig {
             token_env: "BELLHOUND_RELAY_TOKEN".to_owned(),
             max_call_seconds: 300,
             emit_partial_transcripts: false,
-            continuation_window_ms: 2_500,
+            continuation_window_ms: 4_000,
         }
     }
 }
@@ -307,7 +307,7 @@ mod tests {
         let config = Config::default();
         config.validate().unwrap();
         assert!(config.acknowledgement.enabled);
-        assert_eq!(config.relay.continuation_window_ms, 2_500);
+        assert_eq!(config.relay.continuation_window_ms, 4_000);
         assert_eq!(config.acknowledgement.mode, AcknowledgementMode::Speech);
         assert_eq!(
             config.acknowledgement.sound_url.as_deref(),

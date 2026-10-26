@@ -134,7 +134,7 @@ webhook_path = "/webhooks/telnyx"
 token_env = "BELLHOUND_RELAY_TOKEN"
 max_call_seconds = 300
 emit_partial_transcripts = false
-continuation_window_ms = 2500
+continuation_window_ms = 4000
 
 [protocol]
 max_speak_chars = 2000
@@ -149,7 +149,7 @@ suppress_phrases = ["thank you", "thanks", "bye", "goodbye", "good night", "good
 suppress_for_session_phrases = ["call has been forwarded to an automated voice messaging system", "the person you are trying to reach is not available"]
 ```
 
-Bellhound waits for `continuation_window_ms` of transcript quiet before exposing a final caller turn. Final fragments inside that window are merged, and interim STT activity extends it. The acknowledgement is deterministic transport behavior, never model output. The default `speech` mode uses the fixed phrase. `suppress_phrases` prevents it from answering brief social closings, while `suppress_for_session_phrases` disables further acknowledgements after a voicemail announcement. `sound` mode sends Telnyx a preemptible, interruptible `play` frame and defaults to Bellhound's public [thinking cue](https://github.com/justinweiler/Bellhound-Sounds). Change `sound_url` to use another public HTTPS asset; when the field is omitted, Bellhound serves its embedded MP3 through the authenticated relay URL. Sound mode falls back to `text` only when Bellhound cannot form either media URL. Set `enabled = false` for an adapter that consistently responds fast enough to make a cue unnecessary. Bellhound cancels its timer when the agent answers within the grace period.
+Bellhound waits for `continuation_window_ms` of transcript quiet before exposing a final caller turn. The four-second default preserves a deliberate three-second human pause. Final fragments inside that window are merged, and interim STT activity extends it. The acknowledgement is deterministic transport behavior, never model output. The default `speech` mode uses the fixed phrase. `suppress_phrases` prevents it from answering brief social closings, while `suppress_for_session_phrases` disables further acknowledgements after a voicemail announcement. `sound` mode sends Telnyx a preemptible, interruptible `play` frame and defaults to Bellhound's public [thinking cue](https://github.com/justinweiler/Bellhound-Sounds). Change `sound_url` to use another public HTTPS asset; when the field is omitted, Bellhound serves its embedded MP3 through the authenticated relay URL. Sound mode falls back to `text` only when Bellhound cannot form either media URL. Set `enabled = false` for an adapter that consistently responds fast enough to make a cue unnecessary. Bellhound cancels its timer when the agent answers within the grace period.
 
 The relay token never belongs in the TOML file. Supply an unguessable value of at least 24 characters through the configured environment variable.
 

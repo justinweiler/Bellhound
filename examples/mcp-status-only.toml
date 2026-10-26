@@ -14,7 +14,7 @@ webhook_path = "/webhooks/telnyx"
 token_env = "BELLHOUND_MCP_STATUS_ONLY_RELAY_TOKEN"
 max_call_seconds = 30
 emit_partial_transcripts = false
-continuation_window_ms = 2500
+continuation_window_ms = 4000
 
 [protocol]
 max_speak_chars = 2000
