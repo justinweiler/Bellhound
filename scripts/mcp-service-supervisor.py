@@ -22,6 +22,7 @@ import time
 import tomllib
 import urllib.parse
 import urllib.request
+import uuid
 
 sys.dont_write_bytecode = True
 
@@ -136,6 +137,28 @@ def clean_environment(source: dict[str, str]) -> dict[str, str]:
         if name.startswith(SECRET_PREFIXES) or name in ("OPEN_WEB_UI", "ALLOW_REMOTE_UI", "PID_FILE"):
             env.pop(name)
     return env
+
+
+def service_environment(
+    source: dict[str, str], runtime_key: str, relay_token: str, args: argparse.Namespace
+) -> dict[str, str]:
+    env = clean_environment(source)
+    env.update(
+        {
+            "CONTROL_PLANE_API_KEY": runtime_key,
+            "BELLHOUND_RELAY_TOKEN": relay_token,
+            "BELLHOUND_ROOT": str(args.root),
+            "BELLHOUND_CONFIG": str(args.base_config),
+            "BELLHOUND_OWNER_MAX_SECONDS": "0",
+            "BELLHOUND_AUTO_BUILD": "0",
+        }
+    )
+    return env
+
+
+def begin_service_run(state_dir: Path) -> tuple[str, int]:
+    (state_dir / "receipt.json").unlink(missing_ok=True)
+    return str(uuid.uuid4()), int(time.time() * 1_000)
 
 
 def fetch_keychain_secret(service: str, account: str, minimum: int) -> str:
@@ -379,19 +402,12 @@ def main() -> int:
     except BlockingIOError as error:
         raise ServiceError("service_already_running") from error
 
+    service_run_id, started_at_unix_ms = begin_service_run(args.state_dir)
+
     stop_requested = threading.Event()
     signal.signal(signal.SIGINT, lambda *_: stop_requested.set())
     signal.signal(signal.SIGTERM, lambda *_: stop_requested.set())
-    env = clean_environment(os.environ)
-    env.update(
-        {
-            "CONTROL_PLANE_API_KEY": runtime_key,
-            "BELLHOUND_RELAY_TOKEN": relay_token,
-            "BELLHOUND_ROOT": str(args.root),
-            "BELLHOUND_CONFIG": str(args.base_config),
-            "BELLHOUND_OWNER_MAX_SECONDS": "0",
-        }
-    )
+    env = service_environment(os.environ, runtime_key, relay_token, args)
     owner = client = None
     owner_pump = client_pump = None
     owner_gate = OwnerReadyGate()
@@ -453,9 +469,17 @@ def main() -> int:
                 "max_call_seconds": args.max_call_seconds,
                 "watchdog_grace_seconds": 5,
                 "control_plane_registered": True,
+                "service_run_id": service_run_id,
+                "started_at_unix_ms": started_at_unix_ms,
             },
         )
-        print(json.dumps({"state": "ready", "profile": args.profile}, separators=(",", ":")), flush=True)
+        print(
+            json.dumps(
+                {"state": "ready", "profile": args.profile, "service_run_id": service_run_id},
+                separators=(",", ":"),
+            ),
+            flush=True,
+        )
         while not stop_requested.wait(0.25):
             if tunnel_gate.failed.is_set():
                 raise ServiceError(tunnel_gate.failure_code or "control_plane_registration_failed")
@@ -525,6 +549,9 @@ def main() -> int:
                 "watchdog_hangups": watchdog.hangups,
                 "cleanup_errors": cleanup_errors,
                 "elapsed_seconds": round(time.monotonic() - started, 3),
+                "service_run_id": service_run_id,
+                "started_at_unix_ms": started_at_unix_ms,
+                "finished_at_unix_ms": int(time.time() * 1_000),
             },
         )
         env.pop("CONTROL_PLANE_API_KEY", None)

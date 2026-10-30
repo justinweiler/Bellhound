@@ -13,21 +13,29 @@ state_dir=$root/work/mcp-service
 supervisor=$root/scripts/mcp-service-supervisor.py
 python=$(command -v python3)
 cargo=$(command -v cargo || true)
-if [ -n "$cargo" ]; then
-  cargo_dir=$(dirname "$cargo")
-else
-  cargo_dir=''
-fi
+
+unload_service() {
+  launchctl bootout "$domain/$label" >/dev/null 2>&1 || true
+  count=0
+  while launchctl print "$domain/$label" >/dev/null 2>&1 && [ "$count" -lt 100 ]; do
+    sleep 0.1
+    count=$((count + 1))
+  done
+  if launchctl print "$domain/$label" >/dev/null 2>&1; then
+    echo "timed out waiting for $label to unload" >&2
+    exit 1
+  fi
+}
 
 render_plist() {
   mkdir -p "$launch_agents" "$state_dir"
   chmod 700 "$launch_agents" "$state_dir"
-  "$python" - "$plist" "$label" "$python" "$supervisor" "$root" "$state_dir" "$cargo_dir" <<'PY'
+  "$python" - "$plist" "$label" "$python" "$supervisor" "$root" "$state_dir" <<'PY'
 import plistlib
 from pathlib import Path
 import sys
 
-destination, label, python, supervisor, root, state, cargo_dir = sys.argv[1:]
+destination, label, python, supervisor, root, state = sys.argv[1:]
 payload = {
     "Label": label,
     "ProgramArguments": [python, supervisor, "--root", root],
@@ -37,7 +45,7 @@ payload = {
     "ProcessType": "Background",
     "ThrottleInterval": 10,
     "EnvironmentVariables": {
-        "PATH": ":".join(filter(None, [cargo_dir, "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]))
+        "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
     },
     "StandardOutPath": str(Path(state) / "launchd.out.log"),
     "StandardErrorPath": str(Path(state) / "launchd.err.log"),
@@ -67,7 +75,7 @@ case "${1:-}" in
     fi
     "$python" "$supervisor" --root "$root" --check >/dev/null
     render_plist
-    launchctl bootout "$domain/$label" >/dev/null 2>&1 || true
+    unload_service
     launchctl bootstrap "$domain" "$plist"
     launchctl enable "$domain/$label"
     launchctl kickstart -k "$domain/$label"
@@ -77,11 +85,11 @@ case "${1:-}" in
     exec launchctl print "$domain/$label"
     ;;
   stop)
-    launchctl bootout "$domain/$label"
+    unload_service
     printf '%s\n' "stopped $label; plist retained at $plist"
     ;;
   uninstall)
-    launchctl bootout "$domain/$label" >/dev/null 2>&1 || true
+    unload_service
     rm -f "$plist"
     printf '%s\n' "uninstalled $label"
     ;;

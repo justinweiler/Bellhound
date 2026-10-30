@@ -9,6 +9,7 @@ import sys
 import tempfile
 import time
 import unittest
+import uuid
 
 
 MODULE_PATH = Path(__file__).parents[1] / "scripts/mcp-service-supervisor.py"
@@ -46,6 +47,72 @@ class WatchdogTests(unittest.TestCase):
 
 
 class BoundaryTests(unittest.TestCase):
+    def test_service_environment_disables_runtime_builds(self):
+        args = type(
+            "Args",
+            (),
+            {
+                "root": Path("/tmp/bellhound"),
+                "base_config": Path("/tmp/bellhound/config.toml"),
+            },
+        )()
+        env = SERVICE.service_environment(
+            {"PATH": "/bin", "BELLHOUND_OLD": "remove-me"},
+            "runtime-key",
+            "relay-token",
+            args,
+        )
+        self.assertEqual(env["BELLHOUND_AUTO_BUILD"], "0")
+        self.assertEqual(env["BELLHOUND_OWNER_MAX_SECONDS"], "0")
+        self.assertNotIn("BELLHOUND_OLD", env)
+
+    def test_begin_service_run_removes_stale_receipt_and_identifies_run(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state_dir = Path(temp)
+            receipt = state_dir / "receipt.json"
+            receipt.write_text('{"reason":"old_failure"}\n')
+            run_id, started_at_unix_ms = SERVICE.begin_service_run(state_dir)
+            self.assertFalse(receipt.exists())
+            self.assertEqual(str(uuid.UUID(run_id)), run_id)
+            self.assertGreater(started_at_unix_ms, 0)
+
+    def test_service_owner_refuses_to_build_stale_source(self):
+        root = MODULE_PATH.parents[1]
+        with tempfile.TemporaryDirectory() as temp:
+            service_root = Path(temp)
+            (service_root / "src").mkdir()
+            (service_root / "work").mkdir()
+            (service_root / "target/release").mkdir(parents=True)
+            binary = service_root / "target/release/bellhound"
+            binary.write_text("#!/bin/sh\nexit 0\n")
+            binary.chmod(0o755)
+            os.utime(binary, (1, 1))
+            (service_root / "Cargo.toml").write_text("[package]\nname='test'\nversion='0.1.0'\n")
+            (service_root / "Cargo.lock").write_text("")
+            (service_root / "src/main.rs").write_text("fn main() {}\n")
+            config = service_root / "work/bellhound-keychain.toml"
+            config.write_text("[relay]\nbind='127.0.0.1:8787'\n")
+            env = os.environ.copy()
+            env.update(
+                {
+                    "BELLHOUND_ROOT": str(service_root),
+                    "BELLHOUND_CONFIG": str(config),
+                    "BELLHOUND_RELAY_TOKEN": "test-token-with-at-least-24-characters",
+                    "BELLHOUND_OWNER_MAX_SECONDS": "0",
+                    "BELLHOUND_AUTO_BUILD": "0",
+                }
+            )
+            result = subprocess.run(
+                [str(root / "skills/bellhound/scripts/session.sh"), "run"],
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("release binary is stale", result.stderr)
+            self.assertIn("mcp-service-macos.sh install", result.stderr)
+
     def test_binary_selection_supports_source_and_release_archive_layouts(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -105,7 +172,9 @@ class BoundaryTests(unittest.TestCase):
             self.assertEqual(payload["Label"], "com.justinweiler.bellhound-mcp")
             self.assertEqual(payload["KeepAlive"], {"SuccessfulExit": False})
             self.assertIn("mcp-service-supervisor.py", payload["ProgramArguments"][1])
-            self.assertIn(str(Path(shutil.which("cargo")).parent), payload["EnvironmentVariables"]["PATH"])
+            self.assertNotIn(
+                str(Path(shutil.which("cargo")).parent), payload["EnvironmentVariables"]["PATH"]
+            )
             rendered = destination.read_text()
             self.assertNotIn("sk-", rendered)
             self.assertNotIn("BELLHOUND_RELAY_TOKEN", rendered)

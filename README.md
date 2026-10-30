@@ -26,7 +26,9 @@ For private always-on use on macOS, see the [MCP service](docs/mcp-service.md). 
 
 ## Status
 
-Version `0.6.1` preserves the proven local workflow, recovers automatically when
+Version `0.6.2` makes installed service startup runtime-only and gives every
+service run correlated readiness/receipt identity so stale failures cannot be
+mistaken for live state. Version `0.6.1` preserves the proven local workflow, recovers automatically when
 a failed pre-setup call leaves an expired opening reservation behind, uses interim
 STT activity to avoid acknowledging a resumed sentence, and prevents MCP hangup
 while the final TTS response may still be playing. Version `0.6.0` added:

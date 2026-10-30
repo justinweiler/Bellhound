@@ -127,6 +127,11 @@ run() {
     echo 'BELLHOUND_OWNER_MAX_SECONDS must be 0 for unbounded service mode or between 30 and 3600' >&2
     exit 1
   fi
+  auto_build=${BELLHOUND_AUTO_BUILD:-1}
+  case "$auto_build" in
+    0|1) ;;
+    *) echo 'BELLHOUND_AUTO_BUILD must be 0 or 1' >&2; exit 1 ;;
+  esac
 
   mkdir -p "$state_dir"
   if pid_is "$owner_pid_file" 'session.sh run' || pid_is "$relay_pid_file" 'bellhound' || pid_is "$tunnel_pid_file" 'cloudflared'; then
@@ -147,6 +152,11 @@ run() {
   fi
   if [ -d "$root/src" ] && [ -f "$root/Cargo.toml" ] && [ -f "$root/Cargo.lock" ] && \
     find "$root/src" "$root/Cargo.toml" "$root/Cargo.lock" -newer "$binary" -print -quit | grep -q .; then
+    if [ "$auto_build" -eq 0 ]; then
+      echo 'Bellhound release binary is stale; run scripts/mcp-service-macos.sh install before starting the service' >&2
+      exit 1
+    fi
+    command -v cargo >/dev/null 2>&1 || { echo 'cargo is required to rebuild Bellhound' >&2; exit 1; }
     cargo build --manifest-path "$root/Cargo.toml" --release --locked >&2
   fi
 

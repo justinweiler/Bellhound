@@ -95,14 +95,26 @@ Installation builds a source checkout when necessary, or uses the executable at
 the root of a prebuilt release archive. It then writes one mode-600 user LaunchAgent at
 `~/Library/LaunchAgents/com.justinweiler.bellhound-mcp.plist`, loads it in the
 current GUI domain, and starts it. The service is available after login and is
-restarted when it exits unexpectedly.
+restarted when it exits unexpectedly. Reinstallation and stop operations wait up
+to ten seconds for launchd to finish unloading the prior process before a new
+bootstrap, avoiding an overlap with an agent still in its terminating state.
+
+The LaunchAgent runtime never invokes Cargo. `install` owns compilation before
+bootstrap; supervised startup removes Cargo from `PATH`, sets
+`BELLHOUND_AUTO_BUILD=0`, and fails fast with an instruction to rerun `install`
+if a source checkout becomes newer than its release binary. This keeps a cold or
+lock-contended build outside the 60-second owner-readiness window.
 
 Keep a prebuilt archive in a stable directory before installing. The LaunchAgent
 records absolute paths. To move or upgrade that directory, uninstall from the old
 directory and install from the new one.
 
-Runtime readiness is recorded at `work/mcp-service/ready.json`. A normal service
-stop removes that ready file and writes `work/mcp-service/receipt.json`.
+Runtime readiness is recorded at `work/mcp-service/ready.json`. Each run carries
+one `service_run_id` plus its start timestamp. When a new run acquires the service
+lock it removes the previous terminal receipt, preventing an old failure from
+appearing current beside live readiness. A normal service stop removes the ready
+file and writes `work/mcp-service/receipt.json` with the same run ID plus start
+and finish timestamps.
 
 ## Stop or remove
 

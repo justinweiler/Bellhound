@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.2 - 2026-10-30
+
+- Keep launchd service startup runtime-only: installation builds the release binary, while supervised startup disables Cargo and fails fast with an explicit reinstall instruction when source is newer than the binary.
+- Remove Cargo from the LaunchAgent runtime `PATH`, eliminating build-lock contention and readiness timeouts during cold post-reboot startup.
+- Give each service run a UUID and start/finish timestamps, remove the previous terminal receipt when a new run acquires ownership, and include the run identity in both live readiness and terminal receipts.
+- Wait for launchd to finish unloading the prior agent before bootstrap, eliminating the upgrade/restart race that could return `Bootstrap failed: 5`.
+
 ## 0.6.1 - 2026-10-26
 
 - Clear an expired pending call opening when reporting relay status, allowing MCP dialing to recover automatically after a pre-setup call failure while retaining the bounded duplicate-dial guard.
