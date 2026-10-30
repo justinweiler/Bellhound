@@ -83,6 +83,11 @@ class BoundaryTests(unittest.TestCase):
             (service_root / "src").mkdir()
             (service_root / "work").mkdir()
             (service_root / "target/release").mkdir(parents=True)
+            bin_dir = service_root / "bin"
+            bin_dir.mkdir()
+            cloudflared = bin_dir / "cloudflared"
+            cloudflared.write_text("#!/bin/sh\nexit 0\n")
+            cloudflared.chmod(0o755)
             binary = service_root / "target/release/bellhound"
             binary.write_text("#!/bin/sh\nexit 0\n")
             binary.chmod(0o755)
@@ -95,6 +100,7 @@ class BoundaryTests(unittest.TestCase):
             env = os.environ.copy()
             env.update(
                 {
+                    "PATH": f"{bin_dir}:{env['PATH']}",
                     "BELLHOUND_ROOT": str(service_root),
                     "BELLHOUND_CONFIG": str(config),
                     "BELLHOUND_RELAY_TOKEN": "test-token-with-at-least-24-characters",
