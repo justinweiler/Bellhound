@@ -5,7 +5,8 @@
 - Keep launchd service startup runtime-only: installation builds the release binary, while supervised startup disables Cargo and fails fast with an explicit reinstall instruction when source is newer than the binary.
 - Remove Cargo from the LaunchAgent runtime `PATH`, eliminating build-lock contention and readiness timeouts during cold post-reboot startup.
 - Give each service run a UUID and start/finish timestamps, remove the previous terminal receipt when a new run acquires ownership, and include the run identity in both live readiness and terminal receipts.
-- Wait for launchd to finish unloading the prior agent before bootstrap, eliminating the upgrade/restart race that could return `Bootstrap failed: 5`.
+- Wait for launchd to finish unloading the prior agent, remove live readiness, and release the service lock before bootstrap, eliminating both `Bootstrap failed: 5` and overlap with supervisor cleanup.
+- Give launchd 120 seconds for the supervisor's bounded child-process teardown instead of the effective five-second default that could kill cleanup before readiness and receipt state converged.
 
 ## 0.6.1 - 2026-10-26
 

@@ -14,15 +14,38 @@ supervisor=$root/scripts/mcp-service-supervisor.py
 python=$(command -v python3)
 cargo=$(command -v cargo || true)
 
+service_lock_available() {
+  "$python" - "$state_dir/service.lock" <<'PY'
+import fcntl
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+path.parent.mkdir(parents=True, exist_ok=True)
+with path.open("a") as lock:
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        raise SystemExit(1)
+    fcntl.flock(lock, fcntl.LOCK_UN)
+PY
+}
+
+service_is_stopped() {
+  ! launchctl print "$domain/$label" >/dev/null 2>&1 &&
+    [ ! -f "$state_dir/ready.json" ] &&
+    service_lock_available
+}
+
 unload_service() {
   launchctl bootout "$domain/$label" >/dev/null 2>&1 || true
   count=0
-  while launchctl print "$domain/$label" >/dev/null 2>&1 && [ "$count" -lt 100 ]; do
+  while ! service_is_stopped && [ "$count" -lt 1200 ]; do
     sleep 0.1
     count=$((count + 1))
   done
-  if launchctl print "$domain/$label" >/dev/null 2>&1; then
-    echo "timed out waiting for $label to unload" >&2
+  if ! service_is_stopped; then
+    echo "timed out waiting for $label to unload and release service state" >&2
     exit 1
   fi
 }
@@ -44,6 +67,7 @@ payload = {
     "KeepAlive": {"SuccessfulExit": False},
     "ProcessType": "Background",
     "ThrottleInterval": 10,
+    "ExitTimeOut": 120,
     "EnvironmentVariables": {
         "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
     },

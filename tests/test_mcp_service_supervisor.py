@@ -171,6 +171,7 @@ class BoundaryTests(unittest.TestCase):
                 payload = plistlib.load(source)
             self.assertEqual(payload["Label"], "com.justinweiler.bellhound-mcp")
             self.assertEqual(payload["KeepAlive"], {"SuccessfulExit": False})
+            self.assertEqual(payload["ExitTimeOut"], 120)
             self.assertIn("mcp-service-supervisor.py", payload["ProgramArguments"][1])
             self.assertNotIn(
                 str(Path(shutil.which("cargo")).parent), payload["EnvironmentVariables"]["PATH"]

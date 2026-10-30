@@ -96,8 +96,12 @@ the root of a prebuilt release archive. It then writes one mode-600 user LaunchA
 `~/Library/LaunchAgents/com.justinweiler.bellhound-mcp.plist`, loads it in the
 current GUI domain, and starts it. The service is available after login and is
 restarted when it exits unexpectedly. Reinstallation and stop operations wait up
-to ten seconds for launchd to finish unloading the prior process before a new
-bootstrap, avoiding an overlap with an agent still in its terminating state.
+up to 120 seconds for launchd to remove the prior process, for live readiness to
+disappear, and for the supervisor's service lock to become acquirable before a
+new bootstrap. The LaunchAgent gives the supervisor the same 120-second exit
+allowance so launchd cannot apply its short default while bounded child-process
+teardown is still running. This avoids overlap with an agent finishing cleanup
+and preserves the terminal receipt.
 
 The LaunchAgent runtime never invokes Cargo. `install` owns compilation before
 bootstrap; supervised startup removes Cargo from `PATH`, sets
