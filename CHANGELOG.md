@@ -7,6 +7,7 @@
 - Include a service run ID and server observation timestamp in MCP status, and require a brand-new hosted status round trip immediately before every dial; an unavailable or unsafe preflight fails closed to text fallback.
 - Move normal-service path and credential validation inside the receipt lifecycle so missing binaries and other preflight failures produce a correlated terminal receipt instead of only a launchd traceback.
 - Upgrade the Rust MCP SDK to 3.9.0 and refresh compatible runtime dependencies to clear newly published advisories before release.
+- Run ordinary CI only for `master` pushes and pull requests; version tags use the release matrix without launching a duplicate full CI matrix.
 
 ## 0.6.2 - 2026-10-30
 
