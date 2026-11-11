@@ -47,10 +47,12 @@ Status must report `owner_running`, `relay_running`, and `tunnel_running` as tru
 
 For hosted MCP, call `bellhound_status` immediately before dial in the same agent
 turn. Require a new `correlation_id`, current `server_observed_at_unix_ms`,
-`control_reachable=true`, `active_call=false`, `opening_pending=false`, and
+`service_state=ready`, `control_reachable=true`, `active_call=false`, `opening_pending=false`, and
 `speech_playback_pending_ms=0`. Do not reuse an earlier result. If this hosted
-round trip fails or times out, the tunnel is not proven fresh: do not dial or
-redial, and use normal text fallback until the service path is recovered.
+round trip fails, times out, or returns `retryable=true`, the tunnel is not yet
+proven fresh. Wait `retry_after_seconds` (10 seconds by default) and retry status
+only, up to six total attempts over one minute. Never retry dial. Use normal text
+fallback only after that bounded recovery window expires without a safe status.
 
 ```sh
 BELLHOUND_RELAY_TOKEN=$(/usr/bin/security find-generic-password -s 'Bellhound relay token' -a 'default' -w) \

@@ -96,6 +96,9 @@ fn mcp_stdio_exposes_cursor_safe_idempotent_tools() {
         json!({}),
     );
     assert_eq!(status["control_reachable"], true);
+    assert_eq!(status["service_state"], "ready");
+    assert_eq!(status["retryable"], false);
+    assert_eq!(status["retry_after_seconds"], Value::Null);
     assert_eq!(status["active_call"], false);
     assert_eq!(status["latest_event_id"], ready_cursor);
     assert_eq!(
@@ -302,6 +305,9 @@ fn mcp_status_only_profile_discovers_tools_and_fails_closed() {
 
     let status = call_tool(&mut stdin, &mut stdout, 3, "bellhound_status", json!({}));
     assert_eq!(status["control_reachable"], false);
+    assert_eq!(status["service_state"], "recovering");
+    assert_eq!(status["retryable"], true);
+    assert_eq!(status["retry_after_seconds"], 10);
     assert_eq!(status["active_call"], Value::Null);
 
     let dial = raw_call_tool(
@@ -319,7 +325,7 @@ fn mcp_status_only_profile_discovers_tools_and_fails_closed() {
         dial["result"]["content"][0]["text"]
             .as_str()
             .unwrap()
-            .contains("control listener is unavailable")
+            .contains("retry bellhound_status in 10 seconds")
     );
 
     shutdown(&mut mcp, stdin);

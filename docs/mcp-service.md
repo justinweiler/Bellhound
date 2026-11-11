@@ -134,6 +134,12 @@ every dial; the successful tool result is the end-to-end tunnel proof and return
 a new correlation ID, server observation timestamp, and service run ID. An older
 status result is never a dialing preflight.
 
+During a launchd recovery window, hosted status may be temporarily unreachable or
+may return `service_state="recovering"`, `retryable=true`, and
+`retry_after_seconds=10`. Agents retry status only at that cadence for at most six
+attempts over one minute. Dial is never retried, and text fallback begins only
+after the bounded recovery window expires without a fresh safe status.
+
 ## Stop or remove
 
 ```sh

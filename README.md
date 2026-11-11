@@ -26,7 +26,9 @@ For private always-on use on macOS, see the [MCP service](docs/mcp-service.md). 
 
 ## Status
 
-Version `0.6.3` continuously proves OpenAI tunnel control-plane polling and
+Version `0.6.4` gives hosted agents a bounded retry contract while launchd
+re-establishes Bellhound, so transient tunnel recovery does not prematurely end
+an alert attempt. Version `0.6.3` continuously proves OpenAI tunnel control-plane polling and
 requires a fresh hosted status round trip immediately before dial. Version `0.6.2` makes installed service startup runtime-only and gives every
 service run correlated readiness/receipt identity so stale failures cannot be
 mistaken for live state. Version `0.6.1` preserves the proven local workflow, recovers automatically when

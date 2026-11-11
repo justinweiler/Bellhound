@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.4 - 2026-11-11
+
+- Mark unavailable local relay status as transient recovery with `service_state="recovering"`, `retryable=true`, and `retry_after_seconds=10`; healthy status explicitly returns `service_state="ready"` and non-retryable state.
+- Teach hosted agents to retry status only every ten seconds for up to six attempts over one minute, never retry dial, and fall back to text only after the bounded recovery window expires.
+- Make dial refusal during local recovery explicitly direct the agent back to delayed status probing instead of returning a generic unavailable-listener error.
+
 ## 0.6.3 - 2026-11-11
 
 - Require tunnel-client's control-plane poll-success metric to be fresh before publishing service readiness, monitor it every five seconds, and fail the supervisor after a 90-second stale/unavailable boundary so launchd re-establishes the complete owned path.
