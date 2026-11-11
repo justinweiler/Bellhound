@@ -45,6 +45,13 @@ Status must report `owner_running`, `relay_running`, and `tunnel_running` as tru
 
 ## Dial and converse
 
+For hosted MCP, call `bellhound_status` immediately before dial in the same agent
+turn. Require a new `correlation_id`, current `server_observed_at_unix_ms`,
+`control_reachable=true`, `active_call=false`, `opening_pending=false`, and
+`speech_playback_pending_ms=0`. Do not reuse an earlier result. If this hosted
+round trip fails or times out, the tunnel is not proven fresh: do not dial or
+redial, and use normal text fallback until the service path is recovered.
+
 ```sh
 BELLHOUND_RELAY_TOKEN=$(/usr/bin/security find-generic-password -s 'Bellhound relay token' -a 'default' -w) \
   target/release/bellhound --config work/session/bellhound.toml dial \

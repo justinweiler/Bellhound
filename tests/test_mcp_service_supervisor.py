@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import os
 from pathlib import Path
 import plistlib
@@ -61,10 +62,56 @@ class BoundaryTests(unittest.TestCase):
             "runtime-key",
             "relay-token",
             args,
+            "11111111-2222-4333-8444-555555555555",
+            1_794_000_000_000,
         )
         self.assertEqual(env["BELLHOUND_AUTO_BUILD"], "0")
         self.assertEqual(env["BELLHOUND_OWNER_MAX_SECONDS"], "0")
         self.assertNotIn("BELLHOUND_OLD", env)
+        self.assertEqual(env["BELLHOUND_SERVICE_RUN_ID"], "11111111-2222-4333-8444-555555555555")
+        self.assertEqual(env["BELLHOUND_SERVICE_STARTED_AT_UNIX_MS"], "1794000000000")
+
+    def test_tunnel_poll_metric_parses_and_enforces_freshness(self):
+        source = (
+            '# HELP commands_poll_last_successful_timestamp_seconds latest poll\n'
+            'commands_poll_last_successful_timestamp_seconds{scope="controlplane"} 1.794e+09\n'
+        )
+        observed = SERVICE.parse_prometheus_metric(source, SERVICE.TUNNEL_POLL_METRIC)
+        self.assertEqual(observed, 1_794_000_000.0)
+        self.assertEqual(SERVICE.tunnel_poll_age_seconds(observed, observed + 12), 12)
+        self.assertEqual(SERVICE.require_fresh_tunnel_poll(observed, observed + 12, 90), 12)
+        with self.assertRaisesRegex(SERVICE.ServiceError, "tunnel_control_plane_stale"):
+            SERVICE.require_fresh_tunnel_poll(observed, observed + 91, 90)
+        with self.assertRaisesRegex(SERVICE.ServiceError, "tunnel_poll_metric_invalid"):
+            SERVICE.tunnel_poll_age_seconds(observed + 30, observed)
+
+    def test_missing_binary_writes_correlated_preflight_receipt(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            state_dir = root / "state"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(MODULE_PATH),
+                    "--root",
+                    str(root),
+                    "--state-dir",
+                    str(state_dir),
+                    "--binary",
+                    str(root / "missing-bellhound"),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            receipt = json.loads((state_dir / "receipt.json").read_text())
+            self.assertEqual(
+                receipt["reason"],
+                "bellhound_binary_missing:run_scripts/mcp-service-macos.sh_install",
+            )
+            self.assertFalse(receipt["ready_was_published"])
+            self.assertEqual(str(uuid.UUID(receipt["service_run_id"])), receipt["service_run_id"])
 
     def test_begin_service_run_removes_stale_receipt_and_identifies_run(self):
         with tempfile.TemporaryDirectory() as temp:

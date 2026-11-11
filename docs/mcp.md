@@ -78,7 +78,7 @@ needs.
 
 ## Event loop
 
-1. Call `bellhound_status`; require `control_reachable=true` and `active_call=false`.
+1. Immediately before dial in the same agent turn, call `bellhound_status`. Require a new `correlation_id`, current `server_observed_at_unix_ms`, `control_reachable=true`, `active_call=false`, `opening_pending=false`, and `speech_playback_pending_ms=0`. The successful hosted call is the tunnel freshness proof; never reuse an earlier status result.
 2. Call `bellhound_dial` with a fresh UUID and concise opening. Save `event_cursor`.
 3. Call `bellhound_wait` with the saved cursor. Advance to every returned `next_cursor`.
 4. On `utterance`, reason and use ordinary tools in the originating session. Call `bellhound_speak` with that event's exact `sequence` and a fresh UUID.

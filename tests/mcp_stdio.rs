@@ -32,6 +32,10 @@ fn mcp_stdio_exposes_cursor_safe_idempotent_tools() {
     let mut mcp = Command::new(env!("CARGO_BIN_EXE_bellhound"))
         .args(["--config", config_path.to_str().unwrap(), "mcp"])
         .env("BELLHOUND_RELAY_TOKEN", token)
+        .env(
+            "BELLHOUND_SERVICE_RUN_ID",
+            "11111111-2222-4333-8444-555555555555",
+        )
         .env("RUST_LOG", "error")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -94,6 +98,12 @@ fn mcp_stdio_exposes_cursor_safe_idempotent_tools() {
     assert_eq!(status["control_reachable"], true);
     assert_eq!(status["active_call"], false);
     assert_eq!(status["latest_event_id"], ready_cursor);
+    assert_eq!(
+        status["service_run_id"],
+        "11111111-2222-4333-8444-555555555555"
+    );
+    assert!(status["server_observed_at_unix_ms"].as_u64().unwrap() > 0);
+    assert!(!status["correlation_id"].as_str().unwrap().is_empty());
 
     let first_wait = call_tool(
         &mut mcp_stdin,

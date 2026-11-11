@@ -28,6 +28,14 @@ configuration, and only then starts the OpenAI tunnel. If either child exits,
 the supervisor stops the other path, requests telephone cleanup, writes a
 mode-600 receipt, and exits nonzero so launchd can restart it.
 
+Initial registration is necessary but not sufficient for long-lived readiness.
+The supervisor also reads tunnel-client's local Prometheus metric for the most
+recent successful OpenAI control-plane poll. It requires a fresh poll before
+publishing `ready.json`, checks every five seconds, and fails closed when the
+metric is stale or unavailable for 90 seconds. launchd then restarts the owned
+relay/tunnel process tree. The metric is read only from tunnel-client's loopback
+health listener; private tunnel identifiers are not copied into receipts.
+
 ## Credentials
 
 The service reads these macOS Keychain entries at startup:
@@ -119,6 +127,12 @@ lock it removes the previous terminal receipt, preventing an old failure from
 appearing current beside live readiness. A normal service stop removes the ready
 file and writes `work/mcp-service/receipt.json` with the same run ID plus start
 and finish timestamps.
+
+Readiness also records `tunnel_poll_last_successful_unix_ms` and the configured
+freshness ceiling. Hosted agents still call `bellhound_status` immediately before
+every dial; the successful tool result is the end-to-end tunnel proof and returns
+a new correlation ID, server observation timestamp, and service run ID. An older
+status result is never a dialing preflight.
 
 ## Stop or remove
 

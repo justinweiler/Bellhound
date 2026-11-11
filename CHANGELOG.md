@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.3 - 2026-11-11
+
+- Require tunnel-client's control-plane poll-success metric to be fresh before publishing service readiness, monitor it every five seconds, and fail the supervisor after a 90-second stale/unavailable boundary so launchd re-establishes the complete owned path.
+- Record the latest successful tunnel poll in `ready.json` and include the freshness ceiling in readiness and terminal receipts.
+- Include a service run ID and server observation timestamp in MCP status, and require a brand-new hosted status round trip immediately before every dial; an unavailable or unsafe preflight fails closed to text fallback.
+- Move normal-service path and credential validation inside the receipt lifecycle so missing binaries and other preflight failures produce a correlated terminal receipt instead of only a launchd traceback.
+- Upgrade the Rust MCP SDK to 3.9.0 and refresh compatible runtime dependencies to clear newly published advisories before release.
+
 ## 0.6.2 - 2026-10-30
 
 - Keep launchd service startup runtime-only: installation builds the release binary, while supervised startup disables Cargo and fails fast with an explicit reinstall instruction when source is newer than the binary.
