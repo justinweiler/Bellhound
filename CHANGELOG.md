@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.5 - 2026-11-17
+
+- Include `examples/`, `CONTRIBUTING.md`, and `SECURITY.md` in every release archive; require them during verification and execute the packaged three-turn simulator plus MCP initialize/tool discovery before publication.
+- Repair Windows ZIP extraction instructions, add native PowerShell configuration, Credential Manager, relay-token inheritance, tunnel, validation, and first-call examples, and document unknown-caller blocking checks.
+- Reorder installation so download, configuration validation, and the no-cost offline simulation precede Telnyx account setup and paid calling.
+- Normalize common apostrophe contractions and count word-bounded suppression phrases so contracted voicemail announcements suppress the session and compound social closings suppress the turn without hiding an actionable single closing phrase.
+- Refresh Voice API Application terminology and remove stale release-version language from the installation path.
+
 ## 0.6.4 - 2026-11-11
 
 - Mark unavailable local relay status as transient recovery with `service_state="recovering"`, `retryable=true`, and `retry_after_seconds=10`; healthy status explicitly returns `service_state="ready"` and non-retryable state.

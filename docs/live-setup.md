@@ -8,10 +8,10 @@ This is the detailed operator reference after installation. New operators should
 - An owned voice-capable number.
 - A verified destination number while the Telnyx trial restriction applies.
 - An active outbound voice profile.
-- A dedicated Call Control application attached to that profile.
+- A dedicated Voice API Application attached to that profile.
 - A public WSS endpoint forwarding to Bellhound's loopback listener.
 
-Telnyx Call Control applications require a primary webhook URL. Use the HTTPS form of the same stable relay host:
+Telnyx Voice API Applications require a primary webhook URL. Use the HTTPS form of the same stable relay host:
 
 ```text
 https://host.example/webhooks/telnyx/<token>

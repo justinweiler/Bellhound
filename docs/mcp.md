@@ -1,6 +1,6 @@
 # MCP integration
 
-Bellhound `0.6.0` includes a standard-input/output MCP server so the reasoning
+Bellhound includes a standard-input/output MCP server so the reasoning
 agent that decides to call can own the telephone turn loop. Bellhound continues
 to own telephony, speech transport, ordering, and cleanup; it does not insert a
 second conversational model.

@@ -4,17 +4,10 @@ This guide takes a new operator from an empty machine to a first outbound call.
 Bellhound's core binary is model-neutral and runs on macOS, Linux, and Windows.
 The packaged always-on service installer currently supports macOS.
 
-## 1. Create and prepare a Telnyx account
+Sections 1–3 are offline, use no Telnyx credit, and require no carrier account.
+Complete them first; only then continue into live telephony.
 
-1. [Create a Telnyx account](https://telnyx.com/sign-up) and complete any identity or payment verification requested in Mission Control Portal.
-2. Upgrade an AI-only **Pretrial** account before using Bellhound. Bellhound uses Programmable Voice and Call Control; Telnyx Pretrial access is limited to its AI product suite. Telnyx may also restrict new accounts to verified destinations or add an automated-call announcement until verification is complete.
-3. In **API Keys**, create a Telnyx API v2 key. Copy it directly into your operating-system credential store when prompted; never put it in this repository, a TOML file, a shell script, or chat.
-4. Buy a voice-capable telephone number. This is Bellhound's `from_number`.
-5. Create or select an outbound voice profile and start with an outbound channel limit of `1` while testing.
-
-You will create the Call Control application after your public relay URL exists in step 5.
-
-## 2. Install Bellhound
+## 1. Install Bellhound
 
 ### Prebuilt archive
 
@@ -30,7 +23,7 @@ Download the archive and matching `.sha256` file for your machine from [GitHub R
 Verify and extract a macOS or Linux archive:
 
 ```sh
-archive=bellhound-0.6.0-aarch64-apple-darwin.tar.gz
+archive=bellhound-0.6.5-aarch64-apple-darwin.tar.gz
 shasum -a 256 -c "$archive.sha256"
 tar -xzf "$archive"
 cd "${archive%.tar.gz}"
@@ -41,19 +34,19 @@ Replace the sample archive name with the file you downloaded. On Linux, use
 `sha256sum -c` when `shasum` is unavailable. In PowerShell:
 
 ```powershell
-$archive = Get-Item .\bellhound-*.zip
+$archive = Get-Item .\bellhound-0.6.5-x86_64-pc-windows-msvc.zip
 $expected = (Get-Content "$archive.sha256").Split()[0]
 $actual = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
 if ($actual -ne $expected) { throw "Bellhound checksum mismatch" }
 Expand-Archive $archive -DestinationPath .
-$folder = [IO.Path]::GetFileNameWithoutExtension([IO.Path]::GetFileNameWithoutExtension($archive.Name))
+$folder = [IO.Path]::GetFileNameWithoutExtension($archive.Name)
 Set-Location $folder
 .\bellhound.exe --version
 ```
 
 Keep the extracted directory in a stable location if you install the macOS service. Its LaunchAgent records that absolute path.
 
-Bellhound `0.6.0` archives are checksummed but are not yet Apple-notarized or
+Bellhound archives are checksummed but are not yet Apple-notarized or
 Windows code-signed. macOS Gatekeeper or Windows SmartScreen may therefore warn
 about the downloaded executable. Do not disable organization security policy to
 run it; build from source or wait for a signed release when policy requires
@@ -72,13 +65,69 @@ cargo build --release --locked
 
 In the commands below, use `./target/release/bellhound` instead of `./bellhound` when working from a source checkout. On Windows, use `bellhound.exe`.
 
-## 3. Create a private configuration
+## 2. Create an offline configuration
 
-Copy the example to a file that stays outside source control:
+Copy the example to a file that stays outside source control.
+
+macOS or Linux:
 
 ```sh
 cp bellhound.example.toml bellhound.toml
 ```
+
+Windows PowerShell:
+
+```powershell
+Copy-Item .\bellhound.example.toml .\bellhound.toml
+```
+
+Validate the file without resolving credentials or opening a network connection:
+
+macOS or Linux:
+
+```sh
+./bellhound --config bellhound.toml check
+```
+
+Windows PowerShell:
+
+```powershell
+.\bellhound.exe --config .\bellhound.toml check
+```
+
+## 3. Prove the local agent loop
+
+This simulation uses no Telnyx credit and makes no network connection:
+
+```sh
+./bellhound --config bellhound.toml simulate --script examples/crocodile-call.jsonl
+```
+
+Windows PowerShell:
+
+```powershell
+.\bellhound.exe --config .\bellhound.toml simulate --script .\examples\crocodile-call.jsonl
+```
+
+Bellhound prints one JSON event per line. Enter a `speak` command to advance the script:
+
+```json
+{"command":"speak","text":"Tell me what happened.","responding_to_sequence":1}
+```
+
+Press `Ctrl-C` after the simulation is complete.
+
+## 4. Create and prepare a Telnyx account
+
+1. [Create a Telnyx account](https://telnyx.com/sign-up) and complete any identity or payment verification requested in Mission Control Portal.
+2. Upgrade an AI-only **Pretrial** account before using Bellhound. Bellhound uses Programmable Voice and Call Control; Telnyx Pretrial access is limited to its AI product suite. Telnyx may also restrict new accounts to verified destinations or add an automated-call announcement until verification is complete.
+3. In **API Keys**, create a Telnyx API v2 key. Copy it directly into your operating-system credential store when prompted; never put it in this repository, a TOML file, a shell script, or chat.
+4. Buy a voice-capable telephone number. This is Bellhound's `from_number`.
+5. Create or select an outbound voice profile and start with an outbound channel limit of `1` while testing.
+
+You will create the Voice API Application after your public relay URL exists in step 6.
+
+## 5. Store live credentials and create a relay token
 
 Choose the credential-store account label you will use and set it in `bellhound.toml`:
 
@@ -95,12 +144,36 @@ Store the API key without placing its value on the command line. On macOS, this 
 security add-generic-password -U -s "Telnyx API key" -a "bellhound" -w
 ```
 
-On Windows, save the same service/account pair in Windows Credential Manager. On Linux, save it in the desktop Secret Service/keyring. For a short-lived development shell on any platform, `TELNYX_API_KEY` may be exported instead; Bellhound checks that variable before the credential store.
+On Windows, Bellhound's [keyring backend mapping](https://docs.rs/windows-native-keyring-store/latest/windows_native_keyring_store/#mapping-service-and-user-values-to-credentials)
+joins account `bellhound` and service `Telnyx API key` as the generic Credential
+Manager target `bellhound.Telnyx API key`. Microsoft's [`cmdkey`](https://learn.microsoft.com/windows-server/administration/windows-commands/cmdkey)
+prompts for the API key when `/pass` is omitted, keeping it out of PowerShell
+history:
+
+```powershell
+cmdkey.exe /generic:"bellhound.Telnyx API key" /user:"bellhound"
+.\bellhound.exe --config .\bellhound.toml credentials
+```
+
+On Linux, save the same service/account pair in the desktop Secret
+Service/keyring. For a short-lived development shell on any platform,
+`TELNYX_API_KEY` may be exported instead; Bellhound checks that variable before
+the credential store.
 
 Create a separate, unguessable relay token. It protects Bellhound's public URL and must contain at least 24 characters:
 
 ```sh
 export BELLHOUND_RELAY_TOKEN="$(openssl rand -hex 32)"
+```
+
+Windows PowerShell can generate the token without displaying it. Child
+PowerShell processes launched afterward inherit the value:
+
+```powershell
+$bytes = New-Object byte[] 32
+$rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
+$env:BELLHOUND_RELAY_TOKEN = ($bytes | ForEach-Object { $_.ToString("x2") }) -join ""
 ```
 
 Keep that shell open while completing the first-call steps. The relay token is not the Telnyx API key.
@@ -112,23 +185,14 @@ Validate the local file and prove that Bellhound can resolve the API key without
 ./bellhound --config bellhound.toml credentials
 ```
 
-## 4. Prove the local agent loop
+Windows PowerShell:
 
-This simulation uses no Telnyx credit and makes no network connection:
-
-```sh
-./bellhound --config bellhound.toml simulate --script examples/crocodile-call.jsonl
+```powershell
+.\bellhound.exe --config .\bellhound.toml check
+.\bellhound.exe --config .\bellhound.toml credentials
 ```
 
-Bellhound prints one JSON event per line. Enter a `speak` command to advance the script:
-
-```json
-{"command":"speak","text":"Tell me what happened.","responding_to_sequence":1}
-```
-
-Press `Ctrl-C` after the simulation is complete.
-
-## 5. Give the relay a public TLS address
+## 6. Give the relay a public TLS address
 
 Bellhound listens only on `127.0.0.1:8787`. Put a TLS tunnel or reverse proxy in front of that listener and expose only that port. Never expose the private control listener on `127.0.0.1:8788`.
 
@@ -139,7 +203,7 @@ https://bellhound.example.com
 wss://bellhound.example.com
 ```
 
-For an initial experiment, install [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) and use its accountless quick-tunnel mode. Its hostname can change every time it restarts. When it changes, update both `public_wss_base` in the configuration and the Call Control application's webhook URL before dialing.
+For an initial experiment, install [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) and use its accountless quick-tunnel mode. Its hostname can change every time it restarts. When it changes, update both `public_wss_base` in the configuration and the Voice API Application's webhook URL before dialing.
 
 Start Bellhound first:
 
@@ -153,16 +217,29 @@ In another terminal, start the temporary tunnel:
 cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8787
 ```
 
+On Windows, generate the relay token in a parent PowerShell as shown in step 5,
+then launch the relay in a child PowerShell that inherits it:
+
+```powershell
+$binary = (Resolve-Path .\bellhound.exe).Path
+$config = (Resolve-Path .\bellhound.toml).Path
+$relayCommand = "& '$binary' --config '$config' relay"
+Start-Process powershell.exe -ArgumentList @("-NoExit", "-Command", $relayCommand)
+
+# In another PowerShell window:
+.\cloudflared.exe tunnel --no-autoupdate --url http://127.0.0.1:8787
+```
+
 Copy the emitted `https://...trycloudflare.com` hostname. Use `wss://` for
 `public_wss_base` and `https://` for the Telnyx webhook. Keep both processes
 running. A named Cloudflare Tunnel, another stable tunnel, or your own reverse
 proxy is a better durable installation.
 
-## 6. Create the Telnyx Call Control application
+## 7. Create the Telnyx Voice API Application
 
 In Mission Control Portal:
 
-1. Open **Real-Time Communications > Voice > Programmable Voice > Call Control Applications**.
+1. Open **Real-Time Communications > Voice > Programmable Voice > Voice API Applications**. Older portal views may still label this area **Call Control Applications**.
 2. Create a dedicated application named `Bellhound` and select webhook API version `2`.
 3. Set its primary webhook URL to the HTTPS form of your relay host plus Bellhound's webhook path and relay token:
 
@@ -170,12 +247,12 @@ In Mission Control Portal:
    https://bellhound.example.com/webhooks/telnyx/<your-relay-token>
    ```
 
-4. Attach the outbound voice profile from step 1.
+4. Attach the outbound voice profile from step 4.
 5. Record the application's ID. Telnyx calls this `connection_id` in the Dial API.
 
 The URL token is prototype authentication. For an Internet-facing production installation, also verify Telnyx webhook signatures at the edge.
 
-## 7. Add the live call settings
+## 8. Add the live call settings
 
 Add this section to the private `bellhound.toml`:
 
@@ -200,7 +277,14 @@ Run the validation again:
 ./bellhound --config bellhound.toml credentials
 ```
 
-## 8. Make the first call
+Windows PowerShell:
+
+```powershell
+.\bellhound.exe --config .\bellhound.toml check
+.\bellhound.exe --config .\bellhound.toml credentials
+```
+
+## 9. Make the first call
 
 With the relay and tunnel still running:
 
@@ -234,13 +318,21 @@ End the call explicitly:
 
 The default `max_call_seconds = 300` is also sent to Telnyx as the carrier-enforced call limit. Keep that protection enabled while experimenting.
 
-## 9. Connect an agent
+On Windows PowerShell, use the same commands through `bellhound.exe`:
+
+```powershell
+.\bellhound.exe --config .\bellhound.toml dial --opening "Hello. Bellhound is ready for its first conversation."
+.\bellhound.exe --config .\bellhound.toml wait --after 0 --timeout-seconds 120
+```
+
+## 10. Connect an agent
 
 - For any agent that can keep a process open, use Bellhound's [JSON Lines protocol](docs/protocol.md).
 - For tool-using agents, use the cursor-based `wait`, `speak`, and `hangup` commands shown above.
 - For local or hosted MCP clients, follow [MCP integration](docs/mcp.md).
 - For the private always-on macOS service, follow [Always-on MCP service](docs/mcp-service.md).
 - For a repeatable human acceptance test, use the [conversation canary](docs/conversation-canary.md).
+- To see what has been tested on each operating system, read [Platform validation](docs/platform-validation.md).
 
 The reasoning model remains the phone agent in every mode. Bellhound handles telephone transport, speech frames, timing, and safety limits.
 
@@ -251,8 +343,9 @@ The reasoning model remains the phone agent in every mode. Bellhound handles tel
 | `credential ... not found` | The TOML service/account labels exactly match the operating-system credential entry. |
 | Call connects but is silent | Keep `voice = "Telnyx.NaturalHD.astra"`; arbitrary friendly names are not valid Ultra voice IDs. Confirm Telnyx can reach the public WSS URL. |
 | Telnyx cannot connect | The public tunnel forwards only to `127.0.0.1:8787`, the relay token matches the process environment, and the WSS path ends in `/conversation-relay/<token>`. |
-| Dial is rejected | Confirm the API key, Call Control application ID, outbound profile, owned `from_number`, verified destination, and account verification status. |
+| Dial is rejected | Confirm the API key, Voice API Application ID, outbound profile, owned `from_number`, verified destination, and account verification status. |
 | A temporary tunnel restarted | Update `public_wss_base` and the Telnyx application's HTTPS webhook URL before trying again. |
+| The phone never rings | Add the Telnyx number to contacts and check Focus, Do Not Disturb, spam filtering, and “silence unknown callers” settings. |
 | Agent replies to the wrong turn | Pass the exact `utterance.sequence` with `--responding-to`; Bellhound rejects stale targeted replies. |
 
 Bellhound deliberately keeps configuration, carrier credentials, relay tokens, and personal telephone numbers out of release archives and source control.

@@ -15,9 +15,9 @@ try {
     cargo build --release --locked --target $Target
     New-Item -ItemType Directory -Force -Path $stage, $OutputDirectory | Out-Null
     Copy-Item "target/$Target/release/bellhound.exe" $stage
-    Copy-Item README.md, INSTALL.md, AUTHORS.md, LICENSE, CHANGELOG.md $stage
+    Copy-Item README.md, INSTALL.md, AUTHORS.md, LICENSE, CHANGELOG.md, CONTRIBUTING.md, SECURITY.md $stage
     Copy-Item bellhound.example.toml $stage
-    Copy-Item assets, docs, scripts, skills -Destination $stage -Recurse
+    Copy-Item assets, docs, examples, scripts, skills -Destination $stage -Recurse
     $zip = Join-Path $OutputDirectory "$archiveName.zip"
     Compress-Archive -Path $stage -DestinationPath $zip -Force
     $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()

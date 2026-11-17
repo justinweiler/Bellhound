@@ -1,6 +1,6 @@
 # Always-on MCP service
 
-Bellhound `0.6.0` ships a macOS user-service supervisor for private, always-on MCP use.
+Bellhound ships a macOS user-service supervisor for private, always-on MCP use.
 It runs inside the signed-in user's session so it can read the three existing
 Keychain entries without copying secrets into a plist, environment file, shell
 profile, repository file, or command line.

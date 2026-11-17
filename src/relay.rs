@@ -1098,21 +1098,24 @@ fn matches_suppression_phrases(text: &str, phrases: &[String]) -> bool {
         return false;
     }
     let word_count = normalized.split_whitespace().count();
-    let mut boundary_matches = 0_usize;
+    let mut phrase_matches = 0_usize;
     for phrase in phrases {
         let phrase = normalize_phrase(phrase);
         if phrase.is_empty() {
             continue;
         }
         let phrase_words = phrase.split_whitespace().count();
-        if normalized == phrase || (phrase_words >= 4 && normalized.contains(&phrase)) {
+        let word_bounded_match = contains_word_sequence(&normalized, &phrase);
+        if word_bounded_match {
+            phrase_matches = phrase_matches.saturating_add(1);
+        }
+        if normalized == phrase || (phrase_words >= 4 && word_bounded_match) {
             return true;
         }
         let trailing_words = normalized.strip_prefix(&format!("{phrase} "));
         let leading_words = normalized.strip_suffix(&format!(" {phrase}"));
         let boundary_match = trailing_words.is_some() || leading_words.is_some();
         if boundary_match {
-            boundary_matches = boundary_matches.saturating_add(1);
             if word_count <= phrase_words.saturating_add(1) {
                 return true;
             }
@@ -1123,7 +1126,13 @@ fn matches_suppression_phrases(text: &str, phrases: &[String]) -> bool {
             }
         }
     }
-    boundary_matches >= 2
+    phrase_matches >= 2
+}
+
+fn contains_word_sequence(value: &str, phrase: &str) -> bool {
+    let value = value.split_whitespace().collect::<Vec<_>>();
+    let phrase = phrase.split_whitespace().collect::<Vec<_>>();
+    !phrase.is_empty() && value.windows(phrase.len()).any(|window| window == phrase)
 }
 
 fn is_short_possessive_vocative(value: &str) -> bool {
@@ -1135,7 +1144,7 @@ fn is_short_possessive_vocative(value: &str) -> bool {
 }
 
 fn normalize_phrase(value: &str) -> String {
-    value
+    let words = value
         .chars()
         .map(|character| {
             if character.is_alphanumeric() {
@@ -1146,8 +1155,30 @@ fn normalize_phrase(value: &str) -> String {
         })
         .collect::<String>()
         .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    let mut normalized = Vec::with_capacity(words.len());
+    let mut index = 0;
+    while index < words.len() {
+        let expansion =
+            words
+                .get(index + 1)
+                .and_then(|next| match (words[index].as_str(), next.as_str()) {
+                    ("you", "re") => Some(["you", "are"]),
+                    ("we", "re") => Some(["we", "are"]),
+                    ("they", "re") => Some(["they", "are"]),
+                    ("i", "m") => Some(["i", "am"]),
+                    _ => None,
+                });
+        if let Some(expansion) = expansion {
+            normalized.extend(expansion.into_iter().map(str::to_owned));
+            index += 2;
+        } else {
+            normalized.push(words[index].clone());
+            index += 1;
+        }
+    }
+    normalized.join(" ")
 }
 
 fn elapsed_millis(duration: Duration) -> u64 {
@@ -1346,6 +1377,29 @@ mod tests {
         assert!(should_acknowledge(
             &config,
             "Please check the live monitor."
+        ));
+    }
+
+    #[test]
+    fn turn_suppression_matches_compound_social_closing_by_word_boundary() {
+        let config = Config::default();
+        assert!(!should_acknowledge(
+            &config,
+            "Okay, thank you, I love you, bye."
+        ));
+        assert!(should_acknowledge(&config, "Goodbye, check the monitor."));
+    }
+
+    #[test]
+    fn session_suppression_normalizes_voicemail_contractions() {
+        let config = Config::default();
+        assert!(matches_suppression_phrases(
+            "The person you're trying to reach is not available.",
+            &config.acknowledgement.suppress_for_session_phrases,
+        ));
+        assert!(matches_suppression_phrases(
+            "The person you’re trying to reach is not available.",
+            &config.acknowledgement.suppress_for_session_phrases,
         ));
     }
 

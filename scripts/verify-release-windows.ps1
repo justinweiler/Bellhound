@@ -17,7 +17,7 @@ try {
     Expand-Archive -LiteralPath $archive.FullName -DestinationPath $stage
     $root = Get-ChildItem -LiteralPath $stage -Directory | Select-Object -First 1
     if (-not $root) { throw "Archive root not found" }
-    foreach ($path in @("bellhound.exe", "INSTALL.md", "README.md", "LICENSE", "AUTHORS.md", "CHANGELOG.md", "bellhound.example.toml")) {
+    foreach ($path in @("bellhound.exe", "INSTALL.md", "README.md", "LICENSE", "AUTHORS.md", "CHANGELOG.md", "CONTRIBUTING.md", "SECURITY.md", "bellhound.example.toml", "docs/platform-validation.md", "examples/crocodile-call.jsonl", "examples/mcp-status-only.toml", "scripts/verify-package-behavior.py")) {
         if (-not (Test-Path -LiteralPath (Join-Path $root.FullName $path))) {
             throw "Archive member not found: $path"
         }
@@ -26,6 +26,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Bellhound version check failed" }
     & (Join-Path $root.FullName "bellhound.exe") --config (Join-Path $root.FullName "bellhound.example.toml") check
     if ($LASTEXITCODE -ne 0) { throw "Bellhound configuration check failed" }
+    python (Join-Path $root.FullName "scripts/verify-package-behavior.py") --binary (Join-Path $root.FullName "bellhound.exe") --root $root.FullName
+    if ($LASTEXITCODE -ne 0) { throw "Bellhound packaged behavior check failed" }
     Write-Output "verified $($archive.Name)"
 }
 finally {

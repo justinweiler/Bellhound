@@ -26,41 +26,23 @@ For private always-on use on macOS, see the [MCP service](docs/mcp-service.md). 
 
 ## Status
 
-Version `0.6.4` gives hosted agents a bounded retry contract while launchd
-re-establishes Bellhound, so transient tunnel recovery does not prematurely end
-an alert attempt. Version `0.6.3` continuously proves OpenAI tunnel control-plane polling and
-requires a fresh hosted status round trip immediately before dial. Version `0.6.2` makes installed service startup runtime-only and gives every
-service run correlated readiness/receipt identity so stale failures cannot be
-mistaken for live state. Version `0.6.1` preserves the proven local workflow, recovers automatically when
-a failed pre-setup call leaves an expired opening reservation behind, uses interim
-STT activity to avoid acknowledging a resumed sentence, and prevents MCP hangup
-while the final TTS response may still be playing. Version `0.6.0` added:
+Version `0.6.5` makes the published Linux and Windows archives self-contained,
+verifies packaged offline behavior, and hardens voicemail/social suppression.
+The current release provides:
 
+- a strict, model-neutral JSON Lines protocol and deterministic simulator;
+- blocking `wait`, `speak`, and `hangup` commands with retained event cursors;
 - a standard-I/O MCP server built with the official Rust MCP SDK;
 - focused `status`, `dial`, cursor-batched `wait`, sequence-targeted `speak`, and `hangup` tools;
 - structured results, accurate safety annotations, correlation timing, redacted events, and retry-safe command IDs;
-- a loopback batch-event endpoint that keeps the existing 256-event history and surfaces cursor gaps.
-- a user-held live-canary supervisor that proves remote control-plane registration before starting telephone infrastructure and retains both foreground process groups through teardown.
-- an optional macOS user service that keeps the private MCP, Bellhound relay, and telephone WSS paths alive under one supervisor with Keychain brokerage and a third call-duration watchdog.
+- a loopback batch-event endpoint that keeps 256 recent events and surfaces cursor gaps;
+- continuation-aware STT merging, sequence-targeted replies, deterministic holding acknowledgement, and playback-safe hangup;
+- a macOS user service that owns MCP, relay, and tunnel processes, brokers Keychain credentials, monitors OpenAI tunnel freshness, and enforces a third call-duration watchdog;
+- a bounded hosted recovery contract that retries status while launchd repairs a transient path and never retries dial.
 
 The private OpenAI MCP path passed status-only discovery and one bounded live call from durable root Cora's existing context-rich session. The call included an ordinary tool lookup, a targeted spoken response, normal hangup, provider-side inactive-call proof, and complete local teardown. The stdio MCP server can also be launched by local MCP hosts such as Claude Code. See [MCP integration](docs/mcp.md).
 
-The underlying Bellhound `0.4.2` behavior provides:
-
-- a strict JSON Lines agent protocol;
-- blocking `wait`, `speak`, and `hangup` CLI commands for any tool-using model;
-- a private loopback control listener with durable event cursors;
-- a deterministic local call simulator;
-- a loopback-only Conversation Relay WebSocket server;
-- one active call at a time;
-- URL-token authentication, call-duration limits, text-size limits, sequence numbers, and explicit errors;
-- outbound Dial with embedded Conversation Relay configuration;
-- Telnyx Call Control hangup for the telephone leg;
-- environment or operating-system credential-store API-key resolution.
-- a default-on thinking acknowledgement with cancellation, optional audio cue, and per-turn latency telemetry.
-- continuation-aware caller turns and sequence-targeted replies that reject stale answers.
-
-Live use requires a dedicated Telnyx Call Control application and a durable WSS tunnel or host.
+Live use requires a dedicated Telnyx Voice API Application and a durable WSS tunnel or host.
 
 ## MCP adapter
 
@@ -88,9 +70,11 @@ Bellhound is ordinary Rust and targets macOS, Linux, and Windows. The WebSocket 
 
 ## Release archives
 
-The release workflow builds native archives for Apple Silicon and Intel macOS, x86-64 Linux glibc, and x86-64 Windows. Each archive contains the executable, complete installation guide, example configuration, operational scripts, license, changelog, and authorship record plus a separate SHA-256 checksum. CI extracts every archive, verifies its checksum and required files, and runs the packaged executable before publication.
+The release workflow builds native archives for Apple Silicon and Intel macOS, x86-64 Linux glibc, and x86-64 Windows. Each archive contains the executable, complete installation guide, example configuration, simulation/MCP examples, operational scripts, contribution and security guides, license, changelog, and authorship record plus a separate SHA-256 checksum. CI extracts every archive, verifies its checksum and required files, runs the three-turn packaged simulator, discovers all five packaged MCP tools, and checks the executable before publication.
 
 Download and verification instructions are in [INSTALL.md](INSTALL.md). The Bellhound core is portable; the packaged always-on service installer currently supports macOS.
+See [Platform validation](docs/platform-validation.md) for the distinction between
+automated package gates and completed human/live acceptance on Linux and Windows.
 
 Package the current Unix target locally with:
 
