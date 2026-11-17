@@ -26,8 +26,8 @@ For private always-on use on macOS, see the [MCP service](docs/mcp-service.md). 
 
 ## Status
 
-Version `0.6.5` makes the published Linux and Windows archives self-contained,
-verifies packaged offline behavior, and hardens voicemail/social suppression.
+Version `0.6.6` adds crates.io distribution and official MCP Registry metadata
+without changing Bellhound's model-neutral runtime or five-tool MCP contract.
 The current release provides:
 
 - a strict, model-neutral JSON Lines protocol and deterministic simulator;
@@ -60,6 +60,24 @@ The OpenAI tunnel runtime key is separate from the Telnyx API key. Ongoing tunne
 
 Use `assets/bellhound-plugin-icon.png` when an MCP host requests a square PNG icon. It is the publication logo rendered at 256×256 and kept below OpenAI's 10 KB custom-app limit.
 
+## Cargo and MCP Registry
+
+Install the published Rust package with:
+
+```sh
+cargo install bellhound --locked
+bellhound init
+```
+
+Bellhound's official MCP Registry identity is:
+
+`mcp-name: io.github.justinweiler/bellhound`
+
+The registry entry launches `bellhound --config <path> mcp` over standard I/O
+and asks the operator for the configuration path. Bellhound continues to resolve
+Telnyx credentials through the environment or operating-system credential store;
+the registry metadata contains no credentials, telephone numbers, or hosted relay.
+
 ## Build
 
 ```sh
@@ -75,6 +93,7 @@ The release workflow builds native archives for Apple Silicon and Intel macOS, x
 Download and verification instructions are in [INSTALL.md](INSTALL.md). The Bellhound core is portable; the packaged always-on service installer currently supports macOS.
 See [Platform validation](docs/platform-validation.md) for the distinction between
 automated package gates and completed human/live acceptance on Linux and Windows.
+For a secret-safe public demonstration, use the [one-minute demo recipe](docs/launch-demo.md).
 
 Package the current Unix target locally with:
 

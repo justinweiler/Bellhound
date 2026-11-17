@@ -17,13 +17,16 @@ try {
     Expand-Archive -LiteralPath $archive.FullName -DestinationPath $stage
     $root = Get-ChildItem -LiteralPath $stage -Directory | Select-Object -First 1
     if (-not $root) { throw "Archive root not found" }
-    foreach ($path in @("bellhound.exe", "INSTALL.md", "README.md", "LICENSE", "AUTHORS.md", "CHANGELOG.md", "CONTRIBUTING.md", "SECURITY.md", "bellhound.example.toml", "docs/platform-validation.md", "examples/crocodile-call.jsonl", "examples/mcp-status-only.toml", "scripts/verify-package-behavior.py")) {
+    foreach ($path in @("bellhound.exe", "INSTALL.md", "README.md", "LICENSE", "AUTHORS.md", "CHANGELOG.md", "CONTRIBUTING.md", "SECURITY.md", "server.json", "bellhound.example.toml", "docs/platform-validation.md", "examples/crocodile-call.jsonl", "examples/mcp-status-only.toml", "scripts/validate-registry-metadata.py", "scripts/verify-package-behavior.py")) {
         if (-not (Test-Path -LiteralPath (Join-Path $root.FullName $path))) {
             throw "Archive member not found: $path"
         }
     }
-    & (Join-Path $root.FullName "bellhound.exe") --version
+    $versionOutput = & (Join-Path $root.FullName "bellhound.exe") --version
     if ($LASTEXITCODE -ne 0) { throw "Bellhound version check failed" }
+    $version = ($versionOutput -split '\s+')[1]
+    python (Join-Path $root.FullName "scripts/validate-registry-metadata.py") --root $root.FullName --expected-version $version
+    if ($LASTEXITCODE -ne 0) { throw "Bellhound registry metadata check failed" }
     & (Join-Path $root.FullName "bellhound.exe") --config (Join-Path $root.FullName "bellhound.example.toml") check
     if ($LASTEXITCODE -ne 0) { throw "Bellhound configuration check failed" }
     python (Join-Path $root.FullName "scripts/verify-package-behavior.py") --binary (Join-Path $root.FullName "bellhound.exe") --root $root.FullName

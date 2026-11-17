@@ -19,11 +19,13 @@ tar -xzf "$archive" -C "$stage"
 root=$(find "$stage" -mindepth 1 -maxdepth 1 -type d -print -quit)
 [ -n "$root" ] || { echo 'archive root not found' >&2; exit 1; }
 
-for path in bellhound INSTALL.md README.md LICENSE AUTHORS.md CHANGELOG.md CONTRIBUTING.md SECURITY.md bellhound.example.toml docs/platform-validation.md examples/crocodile-call.jsonl examples/mcp-status-only.toml scripts/verify-package-behavior.py; do
+for path in bellhound INSTALL.md README.md LICENSE AUTHORS.md CHANGELOG.md CONTRIBUTING.md SECURITY.md server.json bellhound.example.toml docs/platform-validation.md examples/crocodile-call.jsonl examples/mcp-status-only.toml scripts/validate-registry-metadata.py scripts/verify-package-behavior.py; do
   [ -e "$root/$path" ] || { echo "archive member not found: $path" >&2; exit 1; }
 done
 [ -x "$root/bellhound" ] || { echo 'Bellhound binary is not executable' >&2; exit 1; }
 "$root/bellhound" --version
+version=$("$root/bellhound" --version | awk '{print $2}')
+python3 "$root/scripts/validate-registry-metadata.py" --root "$root" --expected-version "$version"
 "$root/bellhound" --config "$root/bellhound.example.toml" check
 python3 "$root/scripts/verify-package-behavior.py" --binary "$root/bellhound" --root "$root"
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.6 - 2026-11-17
+
+- Publish Bellhound under the official MCP registry identity `io.github.justinweiler/bellhound`, with Cargo installation metadata that launches the standard-I/O adapter using an operator-selected configuration file.
+- Add crates.io installation instructions and visible package-ownership metadata without changing the model-neutral runtime or five-tool MCP contract.
+- Include and validate `server.json` in source, Cargo, and native release packages.
+- Add a secret-safe one-minute live demonstration recipe and public launch fact sheet.
+
 ## 0.6.5 - 2026-11-17
 
 - Include `examples/`, `CONTRIBUTING.md`, and `SECURITY.md` in every release archive; require them during verification and execute the packaged three-turn simulator plus MCP initialize/tool discovery before publication.

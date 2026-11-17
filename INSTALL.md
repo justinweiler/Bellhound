@@ -23,7 +23,7 @@ Download the archive and matching `.sha256` file for your machine from [GitHub R
 Verify and extract a macOS or Linux archive:
 
 ```sh
-archive=bellhound-0.6.5-aarch64-apple-darwin.tar.gz
+archive=bellhound-0.6.6-aarch64-apple-darwin.tar.gz
 shasum -a 256 -c "$archive.sha256"
 tar -xzf "$archive"
 cd "${archive%.tar.gz}"
@@ -34,7 +34,7 @@ Replace the sample archive name with the file you downloaded. On Linux, use
 `sha256sum -c` when `shasum` is unavailable. In PowerShell:
 
 ```powershell
-$archive = Get-Item .\bellhound-0.6.5-x86_64-pc-windows-msvc.zip
+$archive = Get-Item .\bellhound-0.6.6-x86_64-pc-windows-msvc.zip
 $expected = (Get-Content "$archive.sha256").Split()[0]
 $actual = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
 if ($actual -ne $expected) { throw "Bellhound checksum mismatch" }
@@ -51,6 +51,19 @@ Windows code-signed. macOS Gatekeeper or Windows SmartScreen may therefore warn
 about the downloaded executable. Do not disable organization security policy to
 run it; build from source or wait for a signed release when policy requires
 trusted publisher identity.
+
+### Cargo install
+
+With the stable [Rust toolchain](https://rustup.rs/) installed, crates.io users can
+compile and install Bellhound directly:
+
+```sh
+cargo install bellhound --locked
+bellhound --version
+```
+
+The remaining examples use `./bellhound` from a release archive. Substitute
+`bellhound` when using the Cargo-installed executable.
 
 ### Build from source
 
