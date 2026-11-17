@@ -2,7 +2,11 @@
 
 ## Reporting
 
-Until a public repository and private vulnerability-reporting channel exist, do not publish suspected vulnerabilities or secret material. Contact the maintainers privately. This section will be updated with the repository's private advisory link before the first public release.
+Please report suspected vulnerabilities through GitHub's
+[private vulnerability reporting form](https://github.com/justinweiler/Bellhound/security/advisories/new).
+Do not open a public issue for a security vulnerability or include secret material in a report.
+Redact API keys, relay tokens, telephone numbers, account identifiers, private URLs, call-control
+identifiers, and real-call transcripts before submitting supporting evidence.
 
 ## Current boundaries
 
