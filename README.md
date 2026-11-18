@@ -24,6 +24,14 @@ See [Architecture](docs/architecture.md) for the ownership and trust model, [Pro
 
 For private always-on use on macOS, see the [MCP service](docs/mcp-service.md). It brokers credentials from Keychain, owns the Bellhound and tunnel process trees, and adds a service watchdog behind the existing Bellhound and carrier call-duration limits.
 
+## Hear Bellhound
+
+[Listen to a 73-second live Bellhound call](https://raw.githubusercontent.com/justinweiler/Bellhound/master/assets/bellhound-demo-call.m4a) between Justin Weiler and Iris, the AI engineering partner who designed and engineered Bellhound. The originating Iris session places the call, hears Justin's decision, checks the public GitHub release with an ordinary tool, speaks the result, and closes the conversation.
+
+This is a real telephone call, published with Justin's consent. The only edit removes
+14.75 seconds of leading dead air while preserving half a second of natural pre-roll;
+the conversation audio is otherwise unchanged.
+
 ## Status
 
 Version `0.6.6` adds crates.io distribution and official MCP Registry metadata

@@ -41,6 +41,7 @@ and speak back without handing the conversation to an intermediary model.
 ## Useful links
 
 - Repository: <https://github.com/justinweiler/Bellhound>
+- Live call: <https://raw.githubusercontent.com/justinweiler/Bellhound/master/assets/bellhound-demo-call.m4a>
 - Release: <https://github.com/justinweiler/Bellhound/releases/tag/v0.6.6>
 - crates.io: <https://crates.io/crates/bellhound>
 - MCP Registry: <https://registry.modelcontextprotocol.io/?q=io.github.justinweiler%2Fbellhound>
