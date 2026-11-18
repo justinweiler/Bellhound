@@ -73,6 +73,9 @@ Bellhound's official MCP Registry identity is:
 
 `mcp-name: io.github.justinweiler/bellhound`
 
+- [Bellhound on crates.io](https://crates.io/crates/bellhound)
+- [Bellhound in the official MCP Registry](https://registry.modelcontextprotocol.io/?q=io.github.justinweiler%2Fbellhound)
+
 The registry entry launches `bellhound --config <path> mcp` over standard I/O
 and asks the operator for the configuration path. Bellhound continues to resolve
 Telnyx credentials through the environment or operating-system credential store;

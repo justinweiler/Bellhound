@@ -41,6 +41,9 @@ and speak back without handing the conversation to an intermediary model.
 ## Useful links
 
 - Repository: <https://github.com/justinweiler/Bellhound>
+- Release: <https://github.com/justinweiler/Bellhound/releases/tag/v0.6.6>
+- crates.io: <https://crates.io/crates/bellhound>
+- MCP Registry: <https://registry.modelcontextprotocol.io/?q=io.github.justinweiler%2Fbellhound>
 - Installation: <https://github.com/justinweiler/Bellhound/blob/master/INSTALL.md>
 - Architecture: <https://github.com/justinweiler/Bellhound/blob/master/docs/architecture.md>
 - MCP integration: <https://github.com/justinweiler/Bellhound/blob/master/docs/mcp.md>
